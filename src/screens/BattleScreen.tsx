@@ -6,7 +6,7 @@ import { HPBar } from '../components/HPBar';
 import { StatusBadge } from '../components/StatusBadge';
 import { MoveButton } from '../components/MoveButton';
 import { TypeBadge } from '../components/TypeBadge';
-import { BattleLog } from '../components/BattleLog';
+import { BattleLog, BattleTextBox } from '../components/BattleLog';
 
 function PokemonSide({
   team,
@@ -126,7 +126,6 @@ interface BattleScreenProps {
 
 export function BattleScreen({ onEnd }: BattleScreenProps) {
   const { battle, selectMove, switchPokemon, clearBattle } = useBattleStore();
-  const [showLog, setShowLog] = useState(false);
   const [muted, setMuted] = useState(false);
 
   useEffect(() => {
@@ -200,9 +199,6 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
           <button onClick={toggleMute} className="text-lg" title={muted ? 'Unmute' : 'Mute'}>
             {muted ? '🔇' : '🔊'}
           </button>
-          <button onClick={() => setShowLog(v => !v)} className="text-sm text-gray-400 hover:text-white">
-            {showLog ? 'Hide Log' : 'Log'}
-          </button>
         </div>
       </div>
 
@@ -226,9 +222,7 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
 
         <PokemonSide team={team1} isTop={false} showBack={true} />
 
-        {showLog && (
-          <BattleLog entries={log} />
-        )}
+        <BattleTextBox entries={log} />
 
         {(isSwitchTeam1 || isSwitchTeam2) && (
           <SwitchPanel
