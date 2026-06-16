@@ -24,8 +24,8 @@ export function BattleTextBox({ entries }: { entries: BattleLogEntry[] }) {
     }
   }, [entries.length]);
 
-  const recent = entries.slice(-3);
-  const oldest = entries.slice(0, -3);
+  const recent = entries.slice(-5);
+  const oldest = entries.slice(0, -5);
 
   return (
     <div className="border-2 border-gray-600 rounded-xl bg-gray-950 overflow-hidden">
@@ -41,7 +41,7 @@ export function BattleTextBox({ entries }: { entries: BattleLogEntry[] }) {
       )}
 
       {/* Recent messages — always visible */}
-      <div className="px-4 py-3 space-y-1 min-h-[72px]">
+      <div className="px-4 py-3 space-y-1 min-h-[108px]">
         {recent.map((e, i) => (
           <div
             key={e.id}

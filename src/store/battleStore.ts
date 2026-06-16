@@ -198,9 +198,9 @@ function executeMove(
     }
   }
 
-  // Self stat changes from damage moves (Close Combat, Draco Meteor, etc.)
+  // Self stat changes from damage moves (Close Combat, Draco Meteor, etc.) always apply
   const selfStatChanges = (move.statChanges ?? []).filter(sc => sc.target === 'user');
-  if (selfStatChanges.length && !def.isFainted) atk = applyStatChanges(atk, selfStatChanges, logs);
+  if (selfStatChanges.length) atk = applyStatChanges(atk, selfStatChanges, logs);
 
   return { atk, def };
 }
