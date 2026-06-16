@@ -45,25 +45,29 @@ function PokemonSide({
           {pokemon.types.map(t => <TypeBadge key={t} type={t} small />)}
         </div>
         {(() => {
-          const stages = pokemon.stages;
-          if (!stages) return null;
-          const labels: [keyof typeof stages, string][] = [
+          const stages = pokemon.stages ?? { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0 };
+          const stats: [keyof typeof stages, string][] = [
             ['attack', 'ATK'], ['defense', 'DEF'], ['specialAttack', 'SpA'],
             ['specialDefense', 'SpD'], ['speed', 'SPD'],
           ];
-          const active = labels.filter(([k]) => stages[k] !== 0);
-          if (!active.length) return null;
           return (
-            <div className={`flex flex-wrap gap-1 mb-1 ${isTop ? 'justify-end' : 'justify-start'}`}>
-              {active.map(([k, label]) => {
-                const v = stages[k];
+            <div className={`flex gap-1 mb-2 ${isTop ? 'justify-end' : 'justify-start'}`}>
+              {stats.map(([k, label]) => {
+                const v = stages[k] as number;
+                const arrows = v > 0 ? '▲'.repeat(Math.min(v, 3)) : v < 0 ? '▼'.repeat(Math.min(-v, 3)) : '';
                 return (
-                  <span
+                  <div
                     key={k}
-                    className={`text-[10px] font-bold px-1 rounded ${v > 0 ? 'bg-green-800 text-green-300' : 'bg-red-900 text-red-300'}`}
+                    className={`flex flex-col items-center rounded px-1.5 py-0.5 min-w-[32px]
+                      ${v > 0 ? 'bg-green-700/60 ring-1 ring-green-500' : v < 0 ? 'bg-red-800/60 ring-1 ring-red-500' : 'bg-gray-800'}`}
                   >
-                    {label}{v > 0 ? `+${v}` : v}
-                  </span>
+                    <span className={`text-[9px] font-bold leading-none ${v > 0 ? 'text-green-300' : v < 0 ? 'text-red-300' : 'text-gray-500'}`}>
+                      {label}
+                    </span>
+                    <span className={`text-[10px] font-black leading-tight ${v > 0 ? 'text-green-300' : v < 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                      {v === 0 ? '—' : arrows || (v > 0 ? `+${v}` : `${v}`)}
+                    </span>
+                  </div>
                 );
               })}
             </div>
