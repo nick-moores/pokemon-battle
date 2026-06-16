@@ -10,6 +10,7 @@ interface TeamStore {
   addPokemonToTeam: (teamId: string, pokemon: TeamPokemon) => void;
   removePokemonFromTeam: (teamId: string, pokemonId: number) => void;
   updatePokemonMoves: (teamId: string, pokemonId: number, moves: TeamPokemon['selectedMoves']) => void;
+  reorderPokemon: (teamId: string, fromIndex: number, toIndex: number) => void;
 }
 
 export const useTeamStore = create<TeamStore>()(
@@ -59,6 +60,17 @@ export const useTeamStore = create<TeamStore>()(
                 }
               : t
           ),
+        })),
+
+      reorderPokemon: (teamId, fromIndex, toIndex) =>
+        set((s) => ({
+          teams: s.teams.map((t) => {
+            if (t.id !== teamId) return t;
+            const pokemon = [...t.pokemon];
+            const [moved] = pokemon.splice(fromIndex, 1);
+            pokemon.splice(toIndex, 0, moved);
+            return { ...t, pokemon };
+          }),
         })),
     }),
     { name: 'pokemon-teams' }

@@ -201,10 +201,11 @@ function TeamCard({ team, onEdit }: { team: Team; onEdit: () => void }) {
 }
 
 function EditTeam({ team, onBack }: { team: Team; onBack: () => void }) {
-  const { addPokemonToTeam, removePokemonFromTeam, updateTeam } = useTeamStore();
+  const { addPokemonToTeam, removePokemonFromTeam, updateTeam, reorderPokemon } = useTeamStore();
   const [query, setQuery] = useState('');
   const [editingMoves, setEditingMoves] = useState<TeamPokemon | null>(null);
   const [teamName, setTeamName] = useState(team.name);
+  const [dragOver, setDragOver] = useState<number | null>(null);
   const { suggestions, selected: found, loading, error, onQueryChange, selectSuggestion, clear } = usePokemonSearch();
 
   const currentTeam = useTeamStore(s => s.teams.find(t => t.id === team.id))!;
@@ -295,8 +296,26 @@ function EditTeam({ team, onBack }: { team: Team; onBack: () => void }) {
 
         <div className="space-y-2">
           {currentTeam.pokemon.map((p, i) => (
-            <div key={p.id} className="bg-gray-800 rounded-2xl p-3 flex items-center gap-3">
-              <span className="text-gray-600 font-bold w-4 text-center">{i + 1}</span>
+            <div
+              key={p.id}
+              draggable
+              onDragStart={e => e.dataTransfer.setData('text/plain', String(i))}
+              onDragOver={e => { e.preventDefault(); setDragOver(i); }}
+              onDragLeave={() => setDragOver(null)}
+              onDrop={e => {
+                e.preventDefault();
+                const from = Number(e.dataTransfer.getData('text/plain'));
+                if (from !== i) reorderPokemon(team.id, from, i);
+                setDragOver(null);
+              }}
+              onDragEnd={() => setDragOver(null)}
+              className={`bg-gray-800 rounded-2xl p-3 flex items-center gap-3 transition-all
+                ${dragOver === i ? 'ring-2 ring-blue-400 bg-gray-700' : ''}`}
+            >
+              <div className="text-gray-500 cursor-grab active:cursor-grabbing select-none px-1 text-lg leading-none">
+                ⠿
+              </div>
+              <span className="text-gray-600 font-bold w-4 text-center text-sm">{i + 1}</span>
               <img src={p.sprite} alt={p.displayName} className="w-12 h-12 object-contain" />
               <div className="flex-1 min-w-0">
                 <div className="font-bold text-white">{p.displayName}</div>
