@@ -74,19 +74,26 @@ export async function fetchMove(name: string): Promise<Move | null> {
     const effect = data.effect_entries?.find((e: any) => e.language.name === 'en');
     const isDamageMove = data.damage_class.name !== 'status';
     const targetIsUser = data.target?.name === 'user';
-    // For damage moves: stat changes always affect the user (self-debuffs like Close Combat, Draco Meteor).
-    // Skip chance-based secondary drops on damage moves (e.g. Psychic's 10% SpDef drop) — too complex for now.
-    // For status moves: use the move's target to decide user vs. opponent.
-    const rawStatChanges: any[] = (isDamageMove && data.effect_chance != null)
-      ? []
-      : (data.stat_changes ?? []);
-    const statChanges = rawStatChanges
-      .map((sc: any) => ({
-        stat: API_STAT_MAP[sc.stat.name],
-        change: sc.change,
-        target: isDamageMove ? 'user' : (targetIsUser ? 'user' : 'opponent'),
-      }))
-      .filter((sc: any) => sc.stat != null) as import('../types').StatChange[];
+    const metaCategory: string = data.meta?.category?.name ?? '';
+
+    // PokeAPI meta categories for damage moves:
+    //   "damage-lower" = lowers OPPONENT's stat (Icy Wind, Mystical Fire, Snarl)
+    //   "damage-raise" = changes USER's stat (Close Combat -def, Draco Meteor -spa, etc.)
+    // Only apply "damage-lower" when effect_chance is 100 or null (guaranteed).
+    // Skip chance-based secondary drops like Psychic's 10% SpDef drop.
+    const mapChanges = (raw: any[], target: 'user' | 'opponent') =>
+      raw
+        .map((sc: any) => ({ stat: API_STAT_MAP[sc.stat.name], change: sc.change, target }))
+        .filter((sc: any) => sc.stat != null) as import('../types').StatChange[];
+
+    let statChanges: import('../types').StatChange[] = [];
+    if (!isDamageMove) {
+      statChanges = mapChanges(data.stat_changes ?? [], targetIsUser ? 'user' : 'opponent');
+    } else if (metaCategory === 'damage-lower' && (data.effect_chance === 100 || data.effect_chance == null)) {
+      statChanges = mapChanges(data.stat_changes ?? [], 'opponent');
+    } else if (metaCategory === 'damage-raise') {
+      statChanges = mapChanges(data.stat_changes ?? [], 'user');
+    }
 
     const move: Move = {
       id: data.id,
