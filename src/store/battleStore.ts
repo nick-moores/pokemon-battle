@@ -217,7 +217,7 @@ export const useBattleStore = create<BattleStore>()(
 
         const t1Speed = t1Active.status === 'paralysis' ? Math.floor(t1Active.stats.speed * 0.5) : t1Active.stats.speed;
         const t2Speed = t2Active.status === 'paralysis' ? Math.floor(t2Active.stats.speed * 0.5) : t2Active.stats.speed;
-        const t1First = t1Speed >= t2Speed;
+        const t1First = t1Speed > t2Speed || (t1Speed === t2Speed && Math.random() < 0.5);
 
         const executeTurn = (
           atk: BattleTeam, def: BattleTeam, atkMove: Move, isT1: boolean
