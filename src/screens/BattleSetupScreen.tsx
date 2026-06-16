@@ -66,11 +66,9 @@ export function BattleSetupScreen({ onBack, onBattleStart }: BattleSetupProps) {
       ...t,
       pokemon: await Promise.all(t.pokemon.map(async p => ({
         ...p,
+        // Always re-fetch moves so statChanges is current; in-memory cache makes this instant
         selectedMoves: await Promise.all(
-          p.selectedMoves.map(m =>
-            // Re-fetch if statChanges is missing (saved before the feature existed)
-            m.statChanges === undefined ? fetchMove(m.name).then(fresh => fresh ?? m) : Promise.resolve(m)
-          )
+          p.selectedMoves.map(m => fetchMove(m.name).then(fresh => fresh ?? m))
         ),
       }))),
     });
