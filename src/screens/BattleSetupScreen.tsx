@@ -3,6 +3,7 @@ import { useTeamStore } from '../store/teamStore';
 import { useBattleStore } from '../store/battleStore';
 import { Team } from '../types';
 import { TypeBadge } from '../components/TypeBadge';
+import { fetchMove } from '../hooks/usePokeAPI';
 
 interface BattleSetupProps {
   onBack: () => void;
@@ -56,16 +57,25 @@ export function BattleSetupScreen({ onBack, onBattleStart }: BattleSetupProps) {
   const canStart = team1 && team2 && team1.id !== team2.id &&
     team1.pokemon.length > 0 && team2.pokemon.length > 0;
 
-  const begin = () => {
+  const [hydrating, setHydrating] = useState(false);
+
+  const begin = async () => {
     if (!team1 || !team2) return;
-    const ensureMoves = (t: Team): Team => ({
+    setHydrating(true);
+    const hydrateTeam = async (t: Team): Promise<Team> => ({
       ...t,
-      pokemon: t.pokemon.map(p => ({
+      pokemon: await Promise.all(t.pokemon.map(async p => ({
         ...p,
-        selectedMoves: p.selectedMoves.length > 0 ? p.selectedMoves : [],
-      })),
+        selectedMoves: await Promise.all(
+          p.selectedMoves.map(m =>
+            // Re-fetch if statChanges is missing (saved before the feature existed)
+            m.statChanges === undefined ? fetchMove(m.name).then(fresh => fresh ?? m) : Promise.resolve(m)
+          )
+        ),
+      }))),
     });
-    startBattle(ensureMoves(team1), ensureMoves(team2));
+    const [h1, h2] = await Promise.all([hydrateTeam(team1), hydrateTeam(team2)]);
+    startBattle(h1, h2);
     onBattleStart();
   };
 
@@ -111,10 +121,10 @@ export function BattleSetupScreen({ onBack, onBattleStart }: BattleSetupProps) {
 
         <button
           onClick={begin}
-          disabled={!canStart}
+          disabled={!canStart || hydrating}
           className="w-full py-5 rounded-2xl bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-xl transition-all hover:scale-105 active:scale-95"
         >
-          ⚔️ Battle!
+          {hydrating ? 'Loading moves…' : '⚔️ Battle!'}
         </button>
       </div>
     </div>
