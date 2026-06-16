@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pokemon-battle",
+      "runtimeExecutable": "/opt/homebrew/Cellar/node/26.3.0/bin/npx",
+      "runtimeArgs": ["vite", "--port", "5173"],
+      "port": 5173
+    }
+  ]
+}
