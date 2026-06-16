@@ -144,7 +144,7 @@ function MoveSelector({ pokemon, teamId, onDone }: { pokemon: TeamPokemon; teamI
                 >
                   <TypeBadge type={move.type} small />
                   <span className="flex-1 font-medium text-white text-sm">{move.displayName}</span>
-                  <span className="text-xs text-gray-400">{move.power ? `${move.power} pw` : move.damageClass === 'status' ? 'status' : 'OHKO'}</span>
+                  <span className="text-xs text-gray-400">{move.category === 'ohko' ? 'OHKO' : move.power ? `${move.power} pw` : 'status'}</span>
                   <span className="text-xs text-gray-500 capitalize">{move.damageClass}</span>
                   {isSelected && <span className="text-blue-300 text-xs font-bold">✓</span>}
                 </button>

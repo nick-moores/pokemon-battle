@@ -34,7 +34,7 @@ export function MoveButton({ move, defenderTypes, onClick, disabled, selected }:
       <div className="flex items-center gap-2 mt-1 text-xs opacity-90">
         <span className="uppercase font-semibold">{move.type}</span>
         <span className="opacity-70">|</span>
-        <span>{move.power ? `⚡ ${move.power}` : move.damageClass === 'status' ? '—' : 'OHKO'}</span>
+        <span>{move.category === 'ohko' ? 'OHKO' : move.power ? `⚡ ${move.power}` : '—'}</span>
         <span className="opacity-70">|</span>
         <span className="capitalize">{move.damageClass}</span>
       </div>

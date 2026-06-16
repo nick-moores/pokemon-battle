@@ -73,6 +73,7 @@ export async function fetchMove(name: string): Promise<Move | null> {
       effectEntry: effect?.short_effect?.replace(/\$effect_chance/g, `${data.effect_chance ?? ''}`) ?? '',
       ailment: data.meta?.ailment?.name ?? 'none',
       ailmentChance: data.meta?.ailment_chance ?? 0,
+      category: data.meta?.category?.name ?? '',
     };
     moveCache.set(name, move);
     return move;

@@ -68,9 +68,12 @@ Then open [http://localhost:5173](http://localhost:5173).
 
 ## Ideas for later
 
+- [ ] EVs and IVs — customize per-Pokemon effort and individual values
+- [ ] Sound effects — hit sounds, faint sounds, move feedback
+- [ ] Music — background battle music
+- [ ] Animations — sprite shake on hit, move flash effects
+- [ ] Older sprites — option to use Gen 4/5 pixel art instead of official artwork
 - [ ] Weather effects (Sun, Rain, Sand, Hail)
 - [ ] Held items
 - [ ] Abilities
 - [ ] Custom rules / house rules
-- [ ] Sound effects
-- [ ] Animations

@@ -15,6 +15,7 @@ export interface Move {
   power: number | null;
   pp: number;
   damageClass: 'physical' | 'special' | 'status';
+  category: string;
   effectEntry: string;
   ailment: string;
   ailmentChance: number;

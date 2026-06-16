@@ -15,8 +15,11 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
     return { damage: 0, effectiveness: 1, isStab: false, isCrit: false };
   }
   // OHKO moves (Fissure, Guillotine, Horn Drill, Sheer Cold)
-  if (!move.power || move.power === 0) {
+  if (move.category === 'ohko') {
     return { damage: defender.currentHp, effectiveness: 1, isStab: false, isCrit: false };
+  }
+  if (!move.power || move.power === 0) {
+    return { damage: 0, effectiveness: 1, isStab: false, isCrit: false };
   }
 
   let atkStat = move.damageClass === 'special' ? attacker.stats.specialAttack : attacker.stats.attack;
