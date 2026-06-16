@@ -2,3 +2,6 @@ node_modules/
 dist/
 .DS_Store
 *.local
+
+# Copyrighted audio - add your own MP3 at public/battle-music.mp3
+public/battle-music.mp3

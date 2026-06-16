@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useBattleStore } from '../store/battleStore';
+import { battleMusic } from '../utils/battleMusic';
 import { BattlePokemon, BattleTeam, Move } from '../types';
 import { HPBar } from '../components/HPBar';
 import { StatusBadge } from '../components/StatusBadge';
@@ -97,6 +98,24 @@ interface BattleScreenProps {
 export function BattleScreen({ onEnd }: BattleScreenProps) {
   const { battle, selectMove, switchPokemon, clearBattle } = useBattleStore();
   const [showLog, setShowLog] = useState(false);
+  const [muted, setMuted] = useState(false);
+
+  useEffect(() => {
+    battleMusic.play();
+    return () => battleMusic.stop();
+  }, []);
+
+  useEffect(() => {
+    if (battle?.phase === 'game-over') battleMusic.stop();
+  }, [battle?.phase]);
+
+  const toggleMute = () => {
+    setMuted(m => {
+      if (m) battleMusic.play();
+      else battleMusic.stop();
+      return !m;
+    });
+  };
 
   if (!battle) return null;
 
@@ -148,12 +167,14 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
       <div className="bg-gray-900 border-b border-gray-800 px-4 py-2 flex items-center justify-between">
         <span className="text-sm text-gray-400">Turn {turn}</span>
         <span className="font-bold text-blue-300">{team1.name} vs {team2.name}</span>
-        <button
-          onClick={() => setShowLog(v => !v)}
-          className="text-sm text-gray-400 hover:text-white"
-        >
-          {showLog ? 'Hide Log' : 'Log'}
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={toggleMute} className="text-lg" title={muted ? 'Unmute' : 'Mute'}>
+            {muted ? '🔇' : '🔊'}
+          </button>
+          <button onClick={() => setShowLog(v => !v)} className="text-sm text-gray-400 hover:text-white">
+            {showLog ? 'Hide Log' : 'Log'}
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 p-4 space-y-4 max-w-lg mx-auto w-full">

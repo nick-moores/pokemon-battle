@@ -335,8 +335,8 @@ export const useBattleStore = create<BattleStore>()(
           const newPokemon = battle.team1.pokemon[pokemonIndex];
           logs.push(log(`${battle.team1.name} sent out ${newPokemon.displayName}!`, 'switch'));
           const t1 = { ...battle.team1, activeIndex: pokemonIndex };
-          const t2Fainted = t2.pokemon[t2.activeIndex].isFainted;
           const t2 = battle.team2;
+          const t2Fainted = t2.pokemon[t2.activeIndex].isFainted;
           const phase: BattleState['phase'] = (battle.phase === 'switch-team1' && t2Fainted) ? 'switch-team2' : 'team1-move';
           set({ battle: { ...battle, team1: t1, phase, log: [...battle.log, ...logs] } });
         } else {
