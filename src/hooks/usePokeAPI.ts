@@ -55,6 +55,16 @@ function queryVariants(raw: string): string[] {
   return [...new Set(variants)];
 }
 
+const API_STAT_MAP: Record<string, string> = {
+  'attack': 'attack',
+  'defense': 'defense',
+  'special-attack': 'specialAttack',
+  'special-defense': 'specialDefense',
+  'speed': 'speed',
+  'accuracy': 'accuracy',
+  'evasion': 'evasion',
+};
+
 export async function fetchMove(name: string): Promise<Move | null> {
   if (moveCache.has(name)) return moveCache.get(name)!;
   try {
@@ -62,6 +72,22 @@ export async function fetchMove(name: string): Promise<Move | null> {
     if (!res.ok) return null;
     const data = await res.json();
     const effect = data.effect_entries?.find((e: any) => e.language.name === 'en');
+    const isDamageMove = data.damage_class.name !== 'status';
+    const targetIsUser = data.target?.name === 'user';
+    // For damage moves: stat changes always affect the user (self-debuffs like Close Combat, Draco Meteor).
+    // Skip chance-based secondary drops on damage moves (e.g. Psychic's 10% SpDef drop) — too complex for now.
+    // For status moves: use the move's target to decide user vs. opponent.
+    const rawStatChanges: any[] = (isDamageMove && data.effect_chance != null)
+      ? []
+      : (data.stat_changes ?? []);
+    const statChanges = rawStatChanges
+      .map((sc: any) => ({
+        stat: API_STAT_MAP[sc.stat.name],
+        change: sc.change,
+        target: isDamageMove ? 'user' : (targetIsUser ? 'user' : 'opponent'),
+      }))
+      .filter((sc: any) => sc.stat != null) as import('../types').StatChange[];
+
     const move: Move = {
       id: data.id,
       name: data.name,
@@ -74,6 +100,7 @@ export async function fetchMove(name: string): Promise<Move | null> {
       ailment: data.meta?.ailment?.name ?? 'none',
       ailmentChance: data.meta?.ailment_chance ?? 0,
       category: data.meta?.category?.name ?? '',
+      statChanges,
     };
     moveCache.set(name, move);
     return move;

@@ -41,9 +41,34 @@ function PokemonSide({
           <span className="font-bold text-white text-lg">{pokemon.displayName}</span>
           <StatusBadge status={pokemon.status} />
         </div>
-        <div className={`flex gap-1 mb-2 ${isTop ? 'justify-end' : 'justify-start'}`}>
+        <div className={`flex gap-1 mb-1 ${isTop ? 'justify-end' : 'justify-start'}`}>
           {pokemon.types.map(t => <TypeBadge key={t} type={t} small />)}
         </div>
+        {(() => {
+          const stages = pokemon.stages;
+          if (!stages) return null;
+          const labels: [keyof typeof stages, string][] = [
+            ['attack', 'ATK'], ['defense', 'DEF'], ['specialAttack', 'SpA'],
+            ['specialDefense', 'SpD'], ['speed', 'SPD'],
+          ];
+          const active = labels.filter(([k]) => stages[k] !== 0);
+          if (!active.length) return null;
+          return (
+            <div className={`flex flex-wrap gap-1 mb-1 ${isTop ? 'justify-end' : 'justify-start'}`}>
+              {active.map(([k, label]) => {
+                const v = stages[k];
+                return (
+                  <span
+                    key={k}
+                    className={`text-[10px] font-bold px-1 rounded ${v > 0 ? 'bg-green-800 text-green-300' : 'bg-red-900 text-red-300'}`}
+                  >
+                    {label}{v > 0 ? `+${v}` : v}
+                  </span>
+                );
+              })}
+            </div>
+          );
+        })()}
         <HPBar current={pokemon.currentHp} max={pokemon.stats.hp} showNumbers />
         <div className={`flex gap-1 mt-2 ${isTop ? 'justify-end' : 'justify-start'}`}>
           {team.pokemon.map((p, i) => (
@@ -220,8 +245,8 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
                 <button
                   onClick={() => selectMove(isTeam1Turn ? 1 : 2, {
                     id: -1, name: 'struggle', displayName: 'Struggle',
-                    type: 'normal', power: 50, pp: 10, damageClass: 'physical',
-                    effectEntry: 'Deals recoil damage.', ailment: 'none', ailmentChance: 0,
+                    type: 'normal', power: 50, pp: 10, damageClass: 'physical', category: '',
+                    effectEntry: 'Deals recoil damage.', ailment: 'none', ailmentChance: 0, statChanges: [],
                   })}
                   className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-xl font-bold text-sm"
                 >

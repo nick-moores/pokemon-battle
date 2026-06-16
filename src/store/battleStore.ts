@@ -4,7 +4,8 @@ import {
   BattleState, BattleTeam, BattlePokemon, Move, Team,
   StatusCondition, BattleRecord, BattleLogEntry
 } from '../types';
-import { calculateDamage, getStatusTickDamage } from '../utils/damage';
+import { calculateDamage, getStatusTickDamage, getStagedSpeed, ZERO_STAGES } from '../utils/damage';
+import { Stages } from '../types';
 import { getEffectivenessText } from '../data/typeChart';
 
 let logId = 0;
@@ -21,7 +22,37 @@ function initBattlePokemon(p: Team['pokemon'][0]): BattlePokemon {
     sleepTurns: 0,
     poisonCount: 1,
     isFainted: false,
+    stages: { ...ZERO_STAGES },
   };
+}
+
+function clampStage(stage: number, delta: number): number {
+  return Math.max(-6, Math.min(6, stage + delta));
+}
+
+function applyStatChanges(pokemon: BattlePokemon, changes: { stat: string; change: number }[], logs: BattleLogEntry[]): BattlePokemon {
+  if (!changes.length) return pokemon;
+  let stages = { ...pokemon.stages };
+  for (const { stat, change } of changes) {
+    const key = stat as keyof Stages;
+    if (!(key in stages)) continue;
+    const before = stages[key];
+    const after = clampStage(before, change);
+    stages = { ...stages, [key]: after };
+    const statLabel: Record<string, string> = {
+      attack: 'Attack', defense: 'Defense', specialAttack: 'Sp. Atk',
+      specialDefense: 'Sp. Def', speed: 'Speed', accuracy: 'Accuracy', evasion: 'Evasion',
+    };
+    if (after === before) {
+      logs.push(log(`${pokemon.displayName}'s ${statLabel[stat]} won't go any ${change > 0 ? 'higher' : 'lower'}!`, 'status'));
+    } else {
+      const delta = after - before;
+      const magnitude = Math.abs(delta) >= 3 ? 'drastically' : Math.abs(delta) === 2 ? 'sharply' : '';
+      const direction = delta > 0 ? 'rose' : 'fell';
+      logs.push(log(`${pokemon.displayName}'s ${statLabel[stat]} ${magnitude ? magnitude + ' ' : ''}${direction}!`, 'status'));
+    }
+  }
+  return { ...pokemon, stages };
 }
 
 function initBattleTeam(team: Team): BattleTeam {
@@ -105,63 +136,73 @@ function executeMove(
   move: Move,
   attackerName: string,
   logs: BattleLogEntry[]
-): BattlePokemon {
+): { atk: BattlePokemon; def: BattlePokemon } {
   logs.push(log(`${attackerName} used ${move.displayName}!`, 'move'));
 
+  let atk = attacker;
+  let def = defender;
+
   if (move.damageClass === 'status') {
+    const statChanges = move.statChanges ?? [];
+    const selfChanges = statChanges.filter(sc => sc.target === 'user');
+    const oppChanges = statChanges.filter(sc => sc.target === 'opponent');
+
     const ailment = move.ailment;
     if (ailment === 'burn' || ailment === 'poison' || ailment === 'paralysis' || ailment === 'sleep' || ailment === 'freeze' || ailment === 'badly-poisoned') {
-      const updated = applyStatus(defender, ailment as StatusCondition);
-      if (updated.status !== defender.status) {
+      const withStatus = applyStatus(def, ailment as StatusCondition);
+      if (withStatus.status !== def.status) {
         let msg = '';
-        if (ailment === 'burn') msg = `${defender.displayName} was burned!`;
-        else if (ailment === 'poison' || ailment === 'badly-poisoned') msg = `${defender.displayName} was poisoned!`;
-        else if (ailment === 'paralysis') msg = `${defender.displayName} was paralyzed!`;
-        else if (ailment === 'sleep') msg = `${defender.displayName} fell asleep!`;
-        else if (ailment === 'freeze') msg = `${defender.displayName} was frozen!`;
+        if (ailment === 'burn') msg = `${def.displayName} was burned!`;
+        else if (ailment === 'poison' || ailment === 'badly-poisoned') msg = `${def.displayName} was poisoned!`;
+        else if (ailment === 'paralysis') msg = `${def.displayName} was paralyzed!`;
+        else if (ailment === 'sleep') msg = `${def.displayName} fell asleep!`;
+        else if (ailment === 'freeze') msg = `${def.displayName} was frozen!`;
         logs.push(log(msg, 'status'));
-        if (ailment === 'sleep') return { ...updated, sleepTurns: Math.floor(Math.random() * 3) + 1 };
-        return updated;
+        def = ailment === 'sleep' ? { ...withStatus, sleepTurns: Math.floor(Math.random() * 3) + 1 } : withStatus;
       } else {
         logs.push(log(`But it failed!`, 'info'));
       }
     } else if (ailment === 'confusion') {
-      if (defender.status === 'none' || defender.status === 'confusion') {
-        logs.push(log(`${defender.displayName} became confused!`, 'status'));
-        return { ...defender, status: 'confusion', confusionTurns: Math.floor(Math.random() * 3) + 2 };
+      if (def.status === 'none' || def.status === 'confusion') {
+        logs.push(log(`${def.displayName} became confused!`, 'status'));
+        def = { ...def, status: 'confusion', confusionTurns: Math.floor(Math.random() * 3) + 2 };
       }
-    } else {
-      logs.push(log(`${attackerName} used ${move.displayName}!`, 'info'));
     }
-    return defender;
+
+    if (selfChanges.length) atk = applyStatChanges(atk, selfChanges, logs);
+    if (oppChanges.length) def = applyStatChanges(def, oppChanges, logs);
+    return { atk, def };
   }
 
-  const { damage, effectiveness, isCrit } = calculateDamage(attacker, defender, move);
+  const { damage, effectiveness, isCrit } = calculateDamage(atk, def, move);
 
   if (effectiveness === 0) {
-    logs.push(log(`It doesn't affect ${defender.displayName}...`, 'effectiveness'));
-    return defender;
+    logs.push(log(`It doesn't affect ${def.displayName}...`, 'effectiveness'));
+    return { atk, def };
   }
 
   const effectText = getEffectivenessText(effectiveness);
   if (effectText) logs.push(log(effectText, 'effectiveness'));
   if (isCrit) logs.push(log('A critical hit!', 'info'));
 
-  const updated = applyDamage(defender, damage);
-  logs.push(log(`${defender.displayName} took ${damage} damage!`, 'damage'));
-  if (updated.isFainted) logs.push(log(`${defender.displayName} fainted!`, 'faint'));
+  def = applyDamage(def, damage);
+  logs.push(log(`${def.displayName} took ${damage} damage!`, 'damage'));
+  if (def.isFainted) logs.push(log(`${def.displayName} fainted!`, 'faint'));
 
-  if (!updated.isFainted && move.ailmentChance > 0 && Math.random() * 100 < move.ailmentChance) {
+  if (!def.isFainted && move.ailmentChance > 0 && Math.random() * 100 < move.ailmentChance) {
     const ailment = move.ailment as StatusCondition;
-    const withStatus = applyStatus(updated, ailment);
-    if (withStatus.status !== updated.status) {
-      logs.push(log(`${defender.displayName} was afflicted with ${ailment}!`, 'status'));
-      if (ailment === 'sleep') return { ...withStatus, sleepTurns: Math.floor(Math.random() * 3) + 1 };
-      return withStatus;
+    const withStatus = applyStatus(def, ailment);
+    if (withStatus.status !== def.status) {
+      logs.push(log(`${def.displayName} was afflicted with ${ailment}!`, 'status'));
+      def = ailment === 'sleep' ? { ...withStatus, sleepTurns: Math.floor(Math.random() * 3) + 1 } : withStatus;
     }
   }
 
-  return updated;
+  // Self stat changes from damage moves (Close Combat, Draco Meteor, etc.)
+  const selfStatChanges = (move.statChanges ?? []).filter(sc => sc.target === 'user');
+  if (selfStatChanges.length && !def.isFainted) atk = applyStatChanges(atk, selfStatChanges, logs);
+
+  return { atk, def };
 }
 
 interface BattleStore {
@@ -215,8 +256,8 @@ export const useBattleStore = create<BattleStore>()(
         const t1Active = t1.pokemon[t1.activeIndex];
         const t2Active = t2.pokemon[t2.activeIndex];
 
-        const t1Speed = t1Active.status === 'paralysis' ? Math.floor(t1Active.stats.speed * 0.5) : t1Active.stats.speed;
-        const t2Speed = t2Active.status === 'paralysis' ? Math.floor(t2Active.stats.speed * 0.5) : t2Active.stats.speed;
+        const t1Speed = getStagedSpeed(t1Active);
+        const t2Speed = getStagedSpeed(t2Active);
         const t1First = t1Speed > t2Speed || (t1Speed === t2Speed && Math.random() < 0.5);
 
         const executeTurn = (
@@ -236,11 +277,14 @@ export const useBattleStore = create<BattleStore>()(
 
           if (!canMove || atkPokemon.isFainted) return { atk, def };
 
-          let defPokemon = def.pokemon[defIdx];
-          const newDef = executeMove(atkPokemon, defPokemon, atkMove, `${isT1 ? t1.name : t2.name}'s ${atkPokemon.displayName}`, logs);
-          const updatedDefPokemon = [...def.pokemon];
-          updatedDefPokemon[defIdx] = newDef;
-          def = { ...def, pokemon: updatedDefPokemon };
+          const defPokemon = def.pokemon[defIdx];
+          const result = executeMove(atkPokemon, defPokemon, atkMove, `${isT1 ? t1.name : t2.name}'s ${atkPokemon.displayName}`, logs);
+          const updatedAtkArr = [...atk.pokemon];
+          updatedAtkArr[atkIdx] = result.atk;
+          atk = { ...atk, pokemon: updatedAtkArr };
+          const updatedDefArr = [...def.pokemon];
+          updatedDefArr[defIdx] = result.def;
+          def = { ...def, pokemon: updatedDefArr };
 
           return { atk, def };
         };
@@ -334,7 +378,10 @@ export const useBattleStore = create<BattleStore>()(
         if (teamNum === 1) {
           const newPokemon = battle.team1.pokemon[pokemonIndex];
           logs.push(log(`${battle.team1.name} sent out ${newPokemon.displayName}!`, 'switch'));
-          const t1 = { ...battle.team1, activeIndex: pokemonIndex };
+          const resetPokemon = battle.team1.pokemon.map((p, i) =>
+            i === pokemonIndex ? { ...p, stages: { ...ZERO_STAGES } } : p
+          );
+          const t1 = { ...battle.team1, activeIndex: pokemonIndex, pokemon: resetPokemon };
           const t2 = battle.team2;
           const t2Fainted = t2.pokemon[t2.activeIndex].isFainted;
           const phase: BattleState['phase'] = (battle.phase === 'switch-team1' && t2Fainted) ? 'switch-team2' : 'team1-move';
@@ -342,7 +389,10 @@ export const useBattleStore = create<BattleStore>()(
         } else {
           const newPokemon = battle.team2.pokemon[pokemonIndex];
           logs.push(log(`${battle.team2.name} sent out ${newPokemon.displayName}!`, 'switch'));
-          const t2 = { ...battle.team2, activeIndex: pokemonIndex };
+          const resetPokemon = battle.team2.pokemon.map((p, i) =>
+            i === pokemonIndex ? { ...p, stages: { ...ZERO_STAGES } } : p
+          );
+          const t2 = { ...battle.team2, activeIndex: pokemonIndex, pokemon: resetPokemon };
           set({ battle: { ...battle, team2: t2, phase: 'team1-move', log: [...battle.log, ...logs] } });
         }
       },

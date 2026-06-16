@@ -1,4 +1,4 @@
-import { BattlePokemon, Move } from '../types';
+import { BattlePokemon, Move, Stages } from '../types';
 import { getTypeEffectiveness } from '../data/typeChart';
 
 const LEVEL = 50;
@@ -10,11 +10,27 @@ export interface DamageResult {
   isCrit: boolean;
 }
 
+// Stage formula: multiplier = max(2, 2+stage) / max(2, 2-stage)
+// Gives: -6=0.25, -5≈0.286, -4≈0.333, -3=0.4, -2=0.5, -1≈0.667, 0=1, +1=1.5, +2=2, +3=2.5, +4=3, +5=3.5, +6=4
+export function getStageMultiplier(stage: number): number {
+  return Math.max(2, 2 + stage) / Math.max(2, 2 - stage);
+}
+
+export function getStagedStat(baseStat: number, stage: number): number {
+  return Math.max(1, Math.floor(baseStat * getStageMultiplier(stage)));
+}
+
+export function getStagedSpeed(pokemon: BattlePokemon): number {
+  const base = pokemon.status === 'paralysis'
+    ? Math.floor(pokemon.stats.speed * 0.5)
+    : pokemon.stats.speed;
+  return getStagedStat(base, pokemon.stages?.speed ?? 0);
+}
+
 export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon, move: Move): DamageResult {
   if (move.damageClass === 'status') {
     return { damage: 0, effectiveness: 1, isStab: false, isCrit: false };
   }
-  // OHKO moves (Fissure, Guillotine, Horn Drill, Sheer Cold)
   if (move.category === 'ohko') {
     return { damage: defender.currentHp, effectiveness: 1, isStab: false, isCrit: false };
   }
@@ -22,8 +38,26 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
     return { damage: 0, effectiveness: 1, isStab: false, isCrit: false };
   }
 
-  let atkStat = move.damageClass === 'special' ? attacker.stats.specialAttack : attacker.stats.attack;
-  let defStat = move.damageClass === 'special' ? defender.stats.specialDefense : defender.stats.defense;
+  const atkStage = move.damageClass === 'special'
+    ? (attacker.stages?.specialAttack ?? 0)
+    : (attacker.stages?.attack ?? 0);
+  const defStage = move.damageClass === 'special'
+    ? (defender.stages?.specialDefense ?? 0)
+    : (defender.stages?.defense ?? 0);
+
+  const isCrit = Math.random() < 0.0625;
+  // Crits ignore attacker's negative stages and defender's positive stages
+  const effectiveAtkStage = isCrit ? Math.max(0, atkStage) : atkStage;
+  const effectiveDefStage = isCrit ? Math.min(0, defStage) : defStage;
+
+  let atkStat = getStagedStat(
+    move.damageClass === 'special' ? attacker.stats.specialAttack : attacker.stats.attack,
+    effectiveAtkStage
+  );
+  let defStat = getStagedStat(
+    move.damageClass === 'special' ? defender.stats.specialDefense : defender.stats.defense,
+    effectiveDefStage
+  );
 
   if (move.damageClass === 'physical' && attacker.status === 'burn') {
     atkStat = Math.floor(atkStat * 0.5);
@@ -34,7 +68,6 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
 
   const isStab = attacker.types.includes(move.type.toLowerCase());
   const stabMult = isStab ? 1.5 : 1;
-  const isCrit = Math.random() < 0.0625;
   const critMult = isCrit ? 1.5 : 1;
   const randomFactor = (Math.floor(Math.random() * 16) + 85) / 100;
 
@@ -50,3 +83,8 @@ export function getStatusTickDamage(pokemon: BattlePokemon): number {
   if (pokemon.status === 'badly-poisoned') return Math.max(1, Math.floor(max * pokemon.poisonCount / 16));
   return 0;
 }
+
+export const ZERO_STAGES: Stages = {
+  attack: 0, defense: 0, specialAttack: 0, specialDefense: 0,
+  speed: 0, accuracy: 0, evasion: 0,
+};

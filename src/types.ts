@@ -7,6 +7,12 @@ export interface PokemonStats {
   speed: number;
 }
 
+export interface StatChange {
+  stat: 'attack' | 'defense' | 'specialAttack' | 'specialDefense' | 'speed' | 'accuracy' | 'evasion';
+  change: number;
+  target: 'user' | 'opponent';
+}
+
 export interface Move {
   id: number;
   name: string;
@@ -19,6 +25,17 @@ export interface Move {
   effectEntry: string;
   ailment: string;
   ailmentChance: number;
+  statChanges: StatChange[];
+}
+
+export interface Stages {
+  attack: number;
+  defense: number;
+  specialAttack: number;
+  specialDefense: number;
+  speed: number;
+  accuracy: number;
+  evasion: number;
 }
 
 export interface BasePokemon {
@@ -59,6 +76,7 @@ export interface BattlePokemon extends TeamPokemon {
   sleepTurns: number;
   poisonCount: number;
   isFainted: boolean;
+  stages: Stages;
 }
 
 export interface BattleTeam {
