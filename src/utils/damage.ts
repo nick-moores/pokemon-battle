@@ -1,4 +1,4 @@
-import { BattlePokemon, Move, Stages } from '../types';
+import { BattlePokemon, Move, Stages, WeatherType } from '../types';
 import { getTypeEffectiveness } from '../data/typeChart';
 
 const LEVEL = 50;
@@ -27,7 +27,15 @@ export function getStagedSpeed(pokemon: BattlePokemon): number {
   return getStagedStat(base, pokemon.stages?.speed ?? 0);
 }
 
-export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon, move: Move): DamageResult {
+export function getWeatherMultiplier(weather: WeatherType | null, moveType: string): number {
+  if (weather === 'sunny' && moveType === 'fire') return 1.5;
+  if (weather === 'sunny' && moveType === 'water') return 0.5;
+  if (weather === 'rain' && moveType === 'water') return 1.5;
+  if (weather === 'rain' && moveType === 'fire') return 0.5;
+  return 1;
+}
+
+export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon, move: Move, weather: WeatherType | null = null): DamageResult {
   if (move.damageClass === 'status') {
     return { damage: 0, effectiveness: 1, isStab: false, isCrit: false };
   }
@@ -63,16 +71,22 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
     atkStat = Math.floor(atkStat * 0.5);
   }
 
+  // Sandstorm boosts Rock-type Special Defense by 50%
+  if (weather === 'sandstorm' && move.damageClass === 'special' && defender.types.some(t => t.toLowerCase() === 'rock')) {
+    defStat = Math.floor(defStat * 1.5);
+  }
+
   const effectiveness = getTypeEffectiveness(move.type, defender.types);
   if (effectiveness === 0) return { damage: 0, effectiveness: 0, isStab: false, isCrit: false };
 
   const isStab = attacker.types.includes(move.type.toLowerCase());
   const stabMult = isStab ? 1.5 : 1;
   const critMult = isCrit ? 1.5 : 1;
+  const weatherMult = getWeatherMultiplier(weather, move.type.toLowerCase());
   const randomFactor = (Math.floor(Math.random() * 16) + 85) / 100;
 
   const base = Math.floor((2 * LEVEL / 5 + 2) * move.power * atkStat / defStat);
-  const damage = Math.max(1, Math.floor((Math.floor(base / 50) + 2) * stabMult * effectiveness * critMult * randomFactor));
+  const damage = Math.max(1, Math.floor((Math.floor(base / 50) + 2) * stabMult * effectiveness * critMult * weatherMult * randomFactor));
 
   return { damage, effectiveness, isStab, isCrit };
 }

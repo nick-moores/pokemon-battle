@@ -2,11 +2,41 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import {
   BattleState, BattleTeam, BattlePokemon, Move, Team,
-  StatusCondition, BattleRecord, BattleLogEntry
+  StatusCondition, BattleRecord, BattleLogEntry, WeatherType
 } from '../types';
 import { calculateDamage, getStatusTickDamage, getStagedSpeed, ZERO_STAGES } from '../utils/damage';
 import { Stages } from '../types';
 import { getEffectivenessText } from '../data/typeChart';
+
+const WEATHER_MOVES: Record<string, WeatherType> = {
+  'sunny-day': 'sunny',
+  'rain-dance': 'rain',
+  'sandstorm': 'sandstorm',
+  'hail': 'hail',
+  'snow': 'hail',
+};
+
+const WEATHER_START: Record<WeatherType, string> = {
+  sunny: 'The sunlight turned harsh!',
+  rain: 'It started to rain!',
+  sandstorm: 'A sandstorm kicked up!',
+  hail: 'It started to hail!',
+};
+
+const WEATHER_END: Record<WeatherType, string> = {
+  sunny: 'The sunlight faded.',
+  rain: 'The rain stopped.',
+  sandstorm: 'The sandstorm subsided.',
+  hail: 'The hail stopped.',
+};
+
+// Types immune to sandstorm/hail chip damage
+const WEATHER_IMMUNE: Record<WeatherType, string[]> = {
+  sunny: [],
+  rain: [],
+  sandstorm: ['rock', 'ground', 'steel'],
+  hail: ['ice'],
+};
 
 let logId = 0;
 function log(text: string, type: BattleLogEntry['type'] = 'info'): BattleLogEntry {
@@ -130,19 +160,49 @@ function applyEndOfTurnStatus(p: BattlePokemon, logs: BattleLogEntry[]): BattleP
   return p;
 }
 
+function applyWeatherTick(
+  t1: BattleTeam, t2: BattleTeam,
+  weather: WeatherType | null,
+  logs: BattleLogEntry[]
+): { t1: BattleTeam; t2: BattleTeam } {
+  if (!weather || weather === 'sunny' || weather === 'rain') return { t1, t2 };
+  const immune = WEATHER_IMMUNE[weather];
+  const label = weather === 'sandstorm' ? 'sandstorm' : 'hail';
+  const tickTeam = (team: BattleTeam): BattleTeam => ({
+    ...team,
+    pokemon: team.pokemon.map(p => {
+      if (p.isFainted || p.types.some(t => immune.includes(t.toLowerCase()))) return p;
+      const dmg = Math.max(1, Math.floor(p.stats.hp / 16));
+      logs.push(log(`${p.displayName} is buffeted by the ${label}!`, 'damage'));
+      const updated = applyDamage(p, dmg);
+      if (updated.isFainted) logs.push(log(`${p.displayName} fainted!`, 'faint'));
+      return updated;
+    }),
+  });
+  return { t1: tickTeam(t1), t2: tickTeam(t2) };
+}
+
 function executeMove(
   attacker: BattlePokemon,
   defender: BattlePokemon,
   move: Move,
   attackerName: string,
-  logs: BattleLogEntry[]
-): { atk: BattlePokemon; def: BattlePokemon } {
+  logs: BattleLogEntry[],
+  weather: WeatherType | null,
+): { atk: BattlePokemon; def: BattlePokemon; newWeather?: WeatherType } {
   logs.push(log(`${attackerName} used ${move.displayName}!`, 'move'));
 
   let atk = attacker;
   let def = defender;
 
   if (move.damageClass === 'status') {
+    // Weather-setting moves
+    const newWeather = WEATHER_MOVES[move.name];
+    if (newWeather !== undefined) {
+      logs.push(log(WEATHER_START[newWeather], 'status'));
+      return { atk, def, newWeather };
+    }
+
     const statChanges = move.statChanges ?? [];
     const selfChanges = statChanges.filter(sc => sc.target === 'user');
     const oppChanges = statChanges.filter(sc => sc.target === 'opponent');
@@ -174,7 +234,7 @@ function executeMove(
     return { atk, def };
   }
 
-  const { damage, effectiveness, isCrit } = calculateDamage(atk, def, move);
+  const { damage, effectiveness, isCrit } = calculateDamage(atk, def, move, weather);
 
   if (effectiveness === 0) {
     logs.push(log(`It doesn't affect ${def.displayName}...`, 'effectiveness'));
@@ -231,6 +291,8 @@ export const useBattleStore = create<BattleStore>()(
             team2SelectedMove: null,
             log: [log(`Battle start! ${team1.name} vs ${team2.name}!`, 'info')],
             winner: null,
+            weather: null,
+            weatherTurnsLeft: 0,
           },
         });
       },
@@ -252,6 +314,8 @@ export const useBattleStore = create<BattleStore>()(
         let t1 = { ...battle.team1 };
         let t2 = { ...battle.team2 };
         const logs: BattleLogEntry[] = [];
+        let currentWeather: WeatherType | null = battle.weather;
+        let currentWeatherTurnsLeft = battle.weatherTurnsLeft;
 
         const t1Active = t1.pokemon[t1.activeIndex];
         const t2Active = t2.pokemon[t2.activeIndex];
@@ -278,7 +342,12 @@ export const useBattleStore = create<BattleStore>()(
           if (!canMove || atkPokemon.isFainted) return { atk, def };
 
           const defPokemon = def.pokemon[defIdx];
-          const result = executeMove(atkPokemon, defPokemon, atkMove, `${isT1 ? t1.name : t2.name}'s ${atkPokemon.displayName}`, logs);
+          const result = executeMove(atkPokemon, defPokemon, atkMove, `${isT1 ? t1.name : t2.name}'s ${atkPokemon.displayName}`, logs, currentWeather);
+          // Propagate weather change immediately so the second move sees it
+          if (result.newWeather !== undefined) {
+            currentWeather = result.newWeather;
+            currentWeatherTurnsLeft = 5;
+          }
           const updatedAtkArr = [...atk.pokemon];
           updatedAtkArr[atkIdx] = result.atk;
           atk = { ...atk, pokemon: updatedAtkArr };
@@ -316,6 +385,19 @@ export const useBattleStore = create<BattleStore>()(
         t1 = { ...t1, pokemon: t1.pokemon.map(p => applyEndOfTurnStatus(p, logs)) };
         t2 = { ...t2, pokemon: t2.pokemon.map(p => applyEndOfTurnStatus(p, logs)) };
 
+        // Weather chip damage (sandstorm/hail) then decrement counter
+        const weatherTickResult = applyWeatherTick(t1, t2, currentWeather, logs);
+        t1 = weatherTickResult.t1;
+        t2 = weatherTickResult.t2;
+        if (currentWeather) {
+          currentWeatherTurnsLeft--;
+          if (currentWeatherTurnsLeft <= 0) {
+            logs.push(log(WEATHER_END[currentWeather], 'status'));
+            currentWeather = null;
+            currentWeatherTurnsLeft = 0;
+          }
+        }
+
         const t1AllFainted = t1.pokemon.every(p => p.isFainted);
         const t2AllFainted = t2.pokemon.every(p => p.isFainted);
 
@@ -333,7 +415,7 @@ export const useBattleStore = create<BattleStore>()(
           };
           set((s) => ({
             battle: {
-              ...battle, t1, t2,
+              ...battle,
               team1: t1, team2: t2,
               phase: 'game-over',
               turn: battle.turn + 1,
@@ -341,6 +423,8 @@ export const useBattleStore = create<BattleStore>()(
               team2SelectedMove: null,
               log: [...battle.log, ...logs],
               winner,
+              weather: currentWeather,
+              weatherTurnsLeft: currentWeatherTurnsLeft,
             },
             history: [record, ...s.history].slice(0, 50),
           }));
@@ -366,6 +450,8 @@ export const useBattleStore = create<BattleStore>()(
             team1SelectedMove: null,
             team2SelectedMove: null,
             log: [...battle.log, ...logs],
+            weather: currentWeather,
+            weatherTurnsLeft: currentWeatherTurnsLeft,
           },
         });
       },

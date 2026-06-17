@@ -32,6 +32,7 @@ function MoveSelector({ pokemon, teamId, onDone }: { pokemon: TeamPokemon; teamI
   const [progress, setProgress] = useState(0);
   const [filter, setFilter] = useState('');
   const [selected, setSelected] = useState<Move[]>(pokemon.selectedMoves ?? []);
+  const [hoveredId, setHoveredId] = useState<number | null>(null);
 
   const startLoading = async () => {
     if (loading || loaded) return;
@@ -131,23 +132,33 @@ function MoveSelector({ pokemon, teamId, onDone }: { pokemon: TeamPokemon; teamI
           <div className="overflow-y-auto flex-1 p-3 space-y-1.5">
             {visible.map(move => {
               const isSelected = !!selected.find(m => m.id === move.id);
+              const isHovered = hoveredId === move.id;
               return (
-                <button
-                  key={move.id}
-                  onClick={() => toggle(move)}
-                  disabled={!isSelected && selected.length >= 4}
-                  className={`
-                    w-full text-left px-3 py-2 rounded-lg flex items-center gap-3 transition-all
-                    ${isSelected ? 'bg-blue-700 border-2 border-blue-400' : 'bg-gray-800 border-2 border-transparent hover:border-gray-600'}
-                    disabled:opacity-40
-                  `}
-                >
-                  <TypeBadge type={move.type} small />
-                  <span className="flex-1 font-medium text-white text-sm">{move.displayName}</span>
-                  <span className="text-xs text-gray-400">{move.category === 'ohko' ? 'OHKO' : move.power ? `${move.power} pw` : 'status'}</span>
-                  <span className="text-xs text-gray-500 capitalize">{move.damageClass}</span>
-                  {isSelected && <span className="text-blue-300 text-xs font-bold">✓</span>}
-                </button>
+                <div key={move.id}>
+                  <button
+                    onClick={() => toggle(move)}
+                    onMouseEnter={() => setHoveredId(move.id)}
+                    onMouseLeave={() => setHoveredId(null)}
+                    disabled={!isSelected && selected.length >= 4}
+                    className={`
+                      w-full text-left px-3 py-2 rounded-lg flex items-center gap-3 transition-all
+                      ${isSelected ? 'bg-blue-700 border-2 border-blue-400' : 'bg-gray-800 border-2 border-transparent hover:border-gray-600'}
+                      ${isHovered && !isSelected ? 'bg-gray-750' : ''}
+                      disabled:opacity-40
+                    `}
+                  >
+                    <TypeBadge type={move.type} small />
+                    <span className="flex-1 font-medium text-white text-sm">{move.displayName}</span>
+                    <span className="text-xs text-gray-400">{move.category === 'ohko' ? 'OHKO' : move.power ? `${move.power} pw` : 'status'}</span>
+                    <span className="text-xs text-gray-500 capitalize">{move.damageClass}</span>
+                    {isSelected && <span className="text-blue-300 text-xs font-bold">✓</span>}
+                  </button>
+                  {isHovered && move.effectEntry && (
+                    <div className="mx-1 mb-1 px-3 py-1.5 bg-gray-700 rounded-b-lg text-xs text-gray-300 leading-relaxed border-t border-gray-600">
+                      {move.effectEntry}
+                    </div>
+                  )}
+                </div>
               );
             })}
             {visible.length === 0 && filter && (

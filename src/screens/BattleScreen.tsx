@@ -147,7 +147,7 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
 
   if (!battle) return null;
 
-  const { team1, team2, phase, turn, log, winner } = battle;
+  const { team1, team2, phase, turn, log, winner, weather, weatherTurnsLeft } = battle;
   const t1Active = team1.pokemon[team1.activeIndex];
   const t2Active = team2.pokemon[team2.activeIndex];
 
@@ -193,7 +193,24 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col text-white">
       <div className="bg-gray-900 border-b border-gray-800 px-4 py-2 flex items-center justify-between">
-        <span className="text-sm text-gray-400">Turn {turn}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-400">Turn {turn}</span>
+          {weather && (() => {
+            const icons: Record<string, string> = { sunny: '☀️', rain: '🌧️', sandstorm: '🌪️', hail: '❄️' };
+            const labels: Record<string, string> = { sunny: 'Sunny', rain: 'Rain', sandstorm: 'Sandstorm', hail: 'Hail' };
+            const colors: Record<string, string> = {
+              sunny: 'text-yellow-300 bg-yellow-900/50 ring-yellow-700',
+              rain: 'text-blue-300 bg-blue-900/50 ring-blue-700',
+              sandstorm: 'text-orange-300 bg-orange-900/50 ring-orange-700',
+              hail: 'text-cyan-300 bg-cyan-900/50 ring-cyan-700',
+            };
+            return (
+              <div className={`text-xs font-bold px-2 py-0.5 rounded-full ring-1 ${colors[weather]}`}>
+                {icons[weather]} {labels[weather]} {weatherTurnsLeft}t
+              </div>
+            );
+          })()}
+        </div>
         <span className="font-bold text-blue-300">{team1.name} vs {team2.name}</span>
         <div className="flex items-center gap-3">
           <button onClick={toggleMute} className="text-lg" title={muted ? 'Unmute' : 'Mute'}>

@@ -59,6 +59,8 @@ export interface Team {
   pokemon: TeamPokemon[];
 }
 
+export type WeatherType = 'sunny' | 'rain' | 'sandstorm' | 'hail';
+
 export type StatusCondition =
   | 'none'
   | 'burn'
@@ -108,6 +110,8 @@ export interface BattleState {
   team2SelectedMove: Move | null;
   log: BattleLogEntry[];
   winner: 'team1' | 'team2' | null;
+  weather: WeatherType | null;
+  weatherTurnsLeft: number;
 }
 
 export interface BattleRecord {
