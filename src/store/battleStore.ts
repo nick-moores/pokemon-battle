@@ -46,6 +46,7 @@ function log(text: string, type: BattleLogEntry['type'] = 'info'): BattleLogEntr
 function initBattlePokemon(p: Team['pokemon'][0]): BattlePokemon {
   return {
     ...p,
+    ability: p.ability || (p.availableAbilities?.[0] ?? ''),
     currentHp: p.stats.hp,
     status: 'none',
     confusionTurns: 0,
@@ -53,6 +54,7 @@ function initBattlePokemon(p: Team['pokemon'][0]): BattlePokemon {
     poisonCount: 1,
     isFainted: false,
     stages: { ...ZERO_STAGES },
+    flashFireActive: false,
   };
 }
 
@@ -171,7 +173,8 @@ function applyWeatherTick(
   const tickTeam = (team: BattleTeam): BattleTeam => ({
     ...team,
     pokemon: team.pokemon.map(p => {
-      if (p.isFainted || p.types.some(t => immune.includes(t.toLowerCase()))) return p;
+      if (p.isFainted || p.types.some(t => immune.includes(t.toLowerCase())) ||
+          (weather === 'sandstorm' && p.ability === 'sand-rush')) return p;
       const dmg = Math.max(1, Math.floor(p.stats.hp / 16));
       logs.push(log(`${p.displayName} is buffeted by the ${label}!`, 'damage'));
       const updated = applyDamage(p, dmg);
@@ -180,6 +183,37 @@ function applyWeatherTick(
     }),
   });
   return { t1: tickTeam(t1), t2: tickTeam(t2) };
+}
+
+const ENTRY_WEATHER: Record<string, WeatherType> = {
+  'drought': 'sunny', 'drizzle': 'rain', 'sand-stream': 'sandstorm', 'snow-warning': 'hail',
+};
+
+function applyEntryAbility(
+  incoming: BattlePokemon,
+  opponent: BattlePokemon,
+  weather: WeatherType | null,
+  weatherTurnsLeft: number,
+  logs: BattleLogEntry[]
+): { incoming: BattlePokemon; opponent: BattlePokemon; weather: WeatherType | null; weatherTurnsLeft: number } {
+  const ability = incoming.ability ?? '';
+
+  // Weather-setting abilities
+  const newWeather = ENTRY_WEATHER[ability];
+  if (newWeather) {
+    logs.push(log(`${incoming.displayName}'s ${ability === 'drought' ? 'Drought' : ability === 'drizzle' ? 'Drizzle' : ability === 'sand-stream' ? 'Sand Stream' : 'Snow Warning'}!`, 'status'));
+    logs.push(log(WEATHER_START[newWeather], 'status'));
+    weather = newWeather;
+    weatherTurnsLeft = 5;
+  }
+
+  // Intimidate
+  if (ability === 'intimidate' && !opponent.isFainted) {
+    logs.push(log(`${incoming.displayName}'s Intimidate!`, 'status'));
+    opponent = applyStatChanges(opponent, [{ stat: 'attack', change: -1 }], logs);
+  }
+
+  return { incoming, opponent, weather, weatherTurnsLeft };
 }
 
 function executeMove(
@@ -234,6 +268,35 @@ function executeMove(
     return { atk, def };
   }
 
+  // Ability-based type immunities (only for damage moves)
+  const mtype = move.type.toLowerCase();
+  if (def.ability === 'levitate' && mtype === 'ground') {
+    logs.push(log(`${def.displayName} is unaffected thanks to Levitate!`, 'effectiveness'));
+    return { atk, def };
+  }
+  if (def.ability === 'flash-fire' && mtype === 'fire') {
+    if (!def.flashFireActive) logs.push(log(`${def.displayName}'s Flash Fire was activated!`, 'status'));
+    def = { ...def, flashFireActive: true };
+    return { atk, def };
+  }
+  if (def.ability === 'water-absorb' && mtype === 'water') {
+    const heal = Math.max(1, Math.floor(def.stats.hp / 4));
+    def = { ...def, currentHp: Math.min(def.stats.hp, def.currentHp + heal) };
+    logs.push(log(`${def.displayName} absorbed the Water move and restored HP!`, 'status'));
+    return { atk, def };
+  }
+  if (def.ability === 'volt-absorb' && mtype === 'electric') {
+    const heal = Math.max(1, Math.floor(def.stats.hp / 4));
+    def = { ...def, currentHp: Math.min(def.stats.hp, def.currentHp + heal) };
+    logs.push(log(`${def.displayName} absorbed the Electric move and restored HP!`, 'status'));
+    return { atk, def };
+  }
+  if (def.ability === 'storm-drain' && mtype === 'water') {
+    logs.push(log(`${def.displayName}'s Storm Drain absorbed the Water move!`, 'status'));
+    def = applyStatChanges(def, [{ stat: 'specialAttack', change: 1 }], logs);
+    return { atk, def };
+  }
+
   const { damage, effectiveness, isCrit } = calculateDamage(atk, def, move, weather);
 
   if (effectiveness === 0) {
@@ -255,6 +318,17 @@ function executeMove(
     if (withStatus.status !== def.status) {
       logs.push(log(`${def.displayName} was afflicted with ${ailment}!`, 'status'));
       def = ailment === 'sleep' ? { ...withStatus, sleepTurns: Math.floor(Math.random() * 3) + 1 } : withStatus;
+    }
+  }
+
+  // On-contact ability triggers (Flame Body, Poison Point) — defender hits back
+  if (!atk.isFainted && !def.isFainted && move.damageClass === 'physical' && damage > 0) {
+    if (def.ability === 'flame-body' && atk.status === 'none' && Math.random() < 0.3) {
+      atk = applyStatus(atk, 'burn');
+      logs.push(log(`${def.displayName}'s Flame Body burned ${atk.displayName}!`, 'status'));
+    } else if (def.ability === 'poison-point' && atk.status === 'none' && Math.random() < 0.3) {
+      atk = applyStatus(atk, 'poison');
+      logs.push(log(`${def.displayName}'s Poison Point poisoned ${atk.displayName}!`, 'status'));
     }
   }
 
@@ -281,18 +355,41 @@ export const useBattleStore = create<BattleStore>()(
       history: [],
 
       startBattle: (team1, team2) => {
+        let bt1 = initBattleTeam(team1);
+        let bt2 = initBattleTeam(team2);
+        const logs: BattleLogEntry[] = [log(`Battle start! ${team1.name} vs ${team2.name}!`, 'info')];
+        let weather: WeatherType | null = null;
+        let weatherTurnsLeft = 0;
+
+        // Apply entry abilities for both leads (t1 first, then t2)
+        let t1Active = bt1.pokemon[bt1.activeIndex];
+        let t2Active = bt2.pokemon[bt2.activeIndex];
+
+        const r1 = applyEntryAbility(t1Active, t2Active, weather, weatherTurnsLeft, logs);
+        t1Active = r1.incoming; t2Active = r1.opponent;
+        weather = r1.weather; weatherTurnsLeft = r1.weatherTurnsLeft;
+
+        const r2 = applyEntryAbility(t2Active, t1Active, weather, weatherTurnsLeft, logs);
+        t2Active = r2.incoming; t1Active = r2.opponent;
+        weather = r2.weather; weatherTurnsLeft = r2.weatherTurnsLeft;
+
+        const t1Pokemon = [...bt1.pokemon]; t1Pokemon[bt1.activeIndex] = t1Active;
+        const t2Pokemon = [...bt2.pokemon]; t2Pokemon[bt2.activeIndex] = t2Active;
+        bt1 = { ...bt1, pokemon: t1Pokemon };
+        bt2 = { ...bt2, pokemon: t2Pokemon };
+
         set({
           battle: {
-            team1: initBattleTeam(team1),
-            team2: initBattleTeam(team2),
+            team1: bt1,
+            team2: bt2,
             phase: 'team1-move',
             turn: 1,
             team1SelectedMove: null,
             team2SelectedMove: null,
-            log: [log(`Battle start! ${team1.name} vs ${team2.name}!`, 'info')],
+            log: logs,
             winner: null,
-            weather: null,
-            weatherTurnsLeft: 0,
+            weather,
+            weatherTurnsLeft,
           },
         });
       },
@@ -320,8 +417,8 @@ export const useBattleStore = create<BattleStore>()(
         const t1Active = t1.pokemon[t1.activeIndex];
         const t2Active = t2.pokemon[t2.activeIndex];
 
-        const t1Speed = getStagedSpeed(t1Active);
-        const t2Speed = getStagedSpeed(t2Active);
+        const t1Speed = getStagedSpeed(t1Active, currentWeather);
+        const t2Speed = getStagedSpeed(t2Active, currentWeather);
         const t1First = t1Speed > t2Speed || (t1Speed === t2Speed && Math.random() < 0.5);
 
         const executeTurn = (
@@ -398,6 +495,30 @@ export const useBattleStore = create<BattleStore>()(
           }
         }
 
+        // End-of-turn ability effects
+        const applyEndOfTurnAbilities = (team: BattleTeam): BattleTeam => {
+          const idx = team.activeIndex;
+          let p = team.pokemon[idx];
+          if (p.isFainted) return team;
+          // Speed Boost: +1 SPD each turn
+          if (p.ability === 'speed-boost') {
+            p = applyStatChanges(p, [{ stat: 'speed', change: 1 }], logs);
+          }
+          // Rain Dish: heal 1/16 HP in rain
+          if (p.ability === 'rain-dish' && currentWeather === 'rain') {
+            const heal = Math.max(1, Math.floor(p.stats.hp / 16));
+            if (p.currentHp < p.stats.hp) {
+              p = { ...p, currentHp: Math.min(p.stats.hp, p.currentHp + heal) };
+              logs.push(log(`${p.displayName} restored a little HP using Rain Dish!`, 'status'));
+            }
+          }
+          const newPokemon = [...team.pokemon];
+          newPokemon[idx] = p;
+          return { ...team, pokemon: newPokemon };
+        };
+        t1 = applyEndOfTurnAbilities(t1);
+        t2 = applyEndOfTurnAbilities(t2);
+
         const t1AllFainted = t1.pokemon.every(p => p.isFainted);
         const t2AllFainted = t2.pokemon.every(p => p.isFainted);
 
@@ -460,6 +581,8 @@ export const useBattleStore = create<BattleStore>()(
         const { battle } = get();
         if (!battle) return;
         const logs: BattleLogEntry[] = [];
+        let weather = battle.weather;
+        let weatherTurnsLeft = battle.weatherTurnsLeft;
 
         if (teamNum === 1) {
           const newPokemon = battle.team1.pokemon[pokemonIndex];
@@ -467,19 +590,34 @@ export const useBattleStore = create<BattleStore>()(
           const resetPokemon = battle.team1.pokemon.map((p, i) =>
             i === pokemonIndex ? { ...p, stages: { ...ZERO_STAGES } } : p
           );
-          const t1 = { ...battle.team1, activeIndex: pokemonIndex, pokemon: resetPokemon };
-          const t2 = battle.team2;
+          let t1 = { ...battle.team1, activeIndex: pokemonIndex, pokemon: resetPokemon };
+          let t2 = battle.team2;
+          // Apply entry ability of the incoming Pokemon
+          const entryResult = applyEntryAbility(t1.pokemon[pokemonIndex], t2.pokemon[t2.activeIndex], weather, weatherTurnsLeft, logs);
+          const t1p = [...t1.pokemon]; t1p[pokemonIndex] = entryResult.incoming;
+          const t2p = [...t2.pokemon]; t2p[t2.activeIndex] = entryResult.opponent;
+          t1 = { ...t1, pokemon: t1p };
+          t2 = { ...t2, pokemon: t2p };
+          weather = entryResult.weather; weatherTurnsLeft = entryResult.weatherTurnsLeft;
           const t2Fainted = t2.pokemon[t2.activeIndex].isFainted;
           const phase: BattleState['phase'] = (battle.phase === 'switch-team1' && t2Fainted) ? 'switch-team2' : 'team1-move';
-          set({ battle: { ...battle, team1: t1, phase, log: [...battle.log, ...logs] } });
+          set({ battle: { ...battle, team1: t1, team2: t2, phase, weather, weatherTurnsLeft, log: [...battle.log, ...logs] } });
         } else {
           const newPokemon = battle.team2.pokemon[pokemonIndex];
           logs.push(log(`${battle.team2.name} sent out ${newPokemon.displayName}!`, 'switch'));
           const resetPokemon = battle.team2.pokemon.map((p, i) =>
             i === pokemonIndex ? { ...p, stages: { ...ZERO_STAGES } } : p
           );
-          const t2 = { ...battle.team2, activeIndex: pokemonIndex, pokemon: resetPokemon };
-          set({ battle: { ...battle, team2: t2, phase: 'team1-move', log: [...battle.log, ...logs] } });
+          let t2 = { ...battle.team2, activeIndex: pokemonIndex, pokemon: resetPokemon };
+          let t1 = battle.team1;
+          // Apply entry ability of the incoming Pokemon
+          const entryResult = applyEntryAbility(t2.pokemon[pokemonIndex], t1.pokemon[t1.activeIndex], weather, weatherTurnsLeft, logs);
+          const t2p = [...t2.pokemon]; t2p[pokemonIndex] = entryResult.incoming;
+          const t1p = [...t1.pokemon]; t1p[t1.activeIndex] = entryResult.opponent;
+          t2 = { ...t2, pokemon: t2p };
+          t1 = { ...t1, pokemon: t1p };
+          weather = entryResult.weather; weatherTurnsLeft = entryResult.weatherTurnsLeft;
+          set({ battle: { ...battle, team1: t1, team2: t2, phase: 'team1-move', weather, weatherTurnsLeft, log: [...battle.log, ...logs] } });
         }
       },
 

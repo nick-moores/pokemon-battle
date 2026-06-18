@@ -20,10 +20,13 @@ export function getStagedStat(baseStat: number, stage: number): number {
   return Math.max(1, Math.floor(baseStat * getStageMultiplier(stage)));
 }
 
-export function getStagedSpeed(pokemon: BattlePokemon): number {
-  const base = pokemon.status === 'paralysis'
+export function getStagedSpeed(pokemon: BattlePokemon, weather: WeatherType | null = null): number {
+  let base = pokemon.status === 'paralysis'
     ? Math.floor(pokemon.stats.speed * 0.5)
     : pokemon.stats.speed;
+  if (weather === 'rain' && pokemon.ability === 'swift-swim') base *= 2;
+  if (weather === 'sunny' && pokemon.ability === 'chlorophyll') base *= 2;
+  if (weather === 'sandstorm' && pokemon.ability === 'sand-rush') base *= 2;
   return getStagedStat(base, pokemon.stages?.speed ?? 0);
 }
 
@@ -58,16 +61,23 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
   const effectiveAtkStage = isCrit ? Math.max(0, atkStage) : atkStage;
   const effectiveDefStage = isCrit ? Math.min(0, defStage) : defStage;
 
-  let atkStat = getStagedStat(
-    move.damageClass === 'special' ? attacker.stats.specialAttack : attacker.stats.attack,
-    effectiveAtkStage
-  );
+  // Huge Power / Pure Power double the base Attack before stage calc
+  let baseAtk = move.damageClass === 'special' ? attacker.stats.specialAttack : attacker.stats.attack;
+  if (move.damageClass === 'physical' &&
+      (attacker.ability === 'huge-power' || attacker.ability === 'pure-power')) {
+    baseAtk *= 2;
+  }
+
+  let atkStat = getStagedStat(baseAtk, effectiveAtkStage);
   let defStat = getStagedStat(
     move.damageClass === 'special' ? defender.stats.specialDefense : defender.stats.defense,
     effectiveDefStage
   );
 
-  if (move.damageClass === 'physical' && attacker.status === 'burn') {
+  // Guts: 1.5× physical Attack when statused (burn penalty removed too)
+  if (move.damageClass === 'physical' && attacker.ability === 'guts' && attacker.status !== 'none') {
+    atkStat = Math.floor(atkStat * 1.5);
+  } else if (move.damageClass === 'physical' && attacker.status === 'burn') {
     atkStat = Math.floor(atkStat * 0.5);
   }
 
@@ -80,13 +90,14 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
   if (effectiveness === 0) return { damage: 0, effectiveness: 0, isStab: false, isCrit: false };
 
   const isStab = attacker.types.includes(move.type.toLowerCase());
-  const stabMult = isStab ? 1.5 : 1;
+  const stabMult = isStab ? (attacker.ability === 'adaptability' ? 2.0 : 1.5) : 1;
   const critMult = isCrit ? 1.5 : 1;
   const weatherMult = getWeatherMultiplier(weather, move.type.toLowerCase());
+  const flashFireMult = (attacker.ability === 'flash-fire' && attacker.flashFireActive && move.type.toLowerCase() === 'fire') ? 1.5 : 1;
   const randomFactor = (Math.floor(Math.random() * 16) + 85) / 100;
 
   const base = Math.floor((2 * LEVEL / 5 + 2) * move.power * atkStat / defStat);
-  const damage = Math.max(1, Math.floor((Math.floor(base / 50) + 2) * stabMult * effectiveness * critMult * weatherMult * randomFactor));
+  const damage = Math.max(1, Math.floor((Math.floor(base / 50) + 2) * stabMult * effectiveness * critMult * weatherMult * flashFireMult * randomFactor));
 
   return { damage, effectiveness, isStab, isCrit };
 }

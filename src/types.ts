@@ -47,10 +47,12 @@ export interface BasePokemon {
   types: string[];
   stats: PokemonStats;
   availableMoveNames: string[];
+  availableAbilities: string[];
 }
 
 export interface TeamPokemon extends BasePokemon {
   selectedMoves: Move[];
+  ability: string;
 }
 
 export interface Team {
@@ -79,6 +81,7 @@ export interface BattlePokemon extends TeamPokemon {
   poisonCount: number;
   isFainted: boolean;
   stages: Stages;
+  flashFireActive: boolean;
 }
 
 export interface BattleTeam {

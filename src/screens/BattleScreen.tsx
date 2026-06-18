@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useBattleStore } from '../store/battleStore';
 import { battleMusic } from '../utils/battleMusic';
 import { BattlePokemon, BattleTeam, Move } from '../types';
@@ -12,10 +12,14 @@ function PokemonSide({
   team,
   isTop,
   showBack,
+  lunging = false,
+  flashing = false,
 }: {
   team: BattleTeam;
   isTop: boolean;
   showBack: boolean;
+  lunging?: boolean;
+  flashing?: boolean;
 }) {
   const pokemon = team.pokemon[team.activeIndex];
   if (!pokemon) return null;
@@ -23,11 +27,11 @@ function PokemonSide({
 
   return (
     <div className={`flex ${isTop ? 'flex-row-reverse' : 'flex-row'} items-end gap-3`}>
-      <div className="relative">
+      <div className={`relative ${lunging ? (isTop ? 'pokemon-lunge-down' : 'pokemon-lunge-up') : ''}`}>
         <img
           src={showBack ? pokemon.backSprite || pokemon.sprite : pokemon.sprite}
           alt={pokemon.displayName}
-          className={`w-28 h-28 object-contain transition-all duration-300 ${fainted ? 'opacity-20 grayscale' : ''}`}
+          className={`w-28 h-28 object-contain transition-opacity duration-300 ${fainted ? 'opacity-20 grayscale' : ''} ${flashing ? 'pokemon-flash' : ''}`}
           style={{ imageRendering: 'pixelated' }}
         />
         {fainted && (
@@ -127,6 +131,9 @@ interface BattleScreenProps {
 export function BattleScreen({ onEnd }: BattleScreenProps) {
   const { battle, selectMove, switchPokemon, clearBattle } = useBattleStore();
   const [muted, setMuted] = useState(false);
+  const [anim, setAnim] = useState({ t1Lunge: false, t2Lunge: false, t1Flash: false, t2Flash: false });
+  const prevLogLen = useRef(battle?.log.length ?? 0);
+  const animTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     battleMusic.play();
@@ -136,6 +143,34 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
   useEffect(() => {
     if (battle?.phase === 'game-over') battleMusic.stop();
   }, [battle?.phase]);
+
+  useEffect(() => {
+    if (!battle) return;
+    const newEntries = battle.log.slice(prevLogLen.current);
+    prevLogLen.current = battle.log.length;
+    if (!newEntries.length) return;
+
+    const t1Name = battle.team1.pokemon[battle.team1.activeIndex]?.displayName ?? '';
+    const t2Name = battle.team2.pokemon[battle.team2.activeIndex]?.displayName ?? '';
+
+    let t1Lunge = false, t2Lunge = false, t1Flash = false, t2Flash = false;
+    for (const entry of newEntries) {
+      if (entry.type !== 'damage') continue;
+      if (!entry.text.includes(' took ') || !entry.text.endsWith(' damage!')) continue;
+      const hitName = entry.text.split(' took ')[0];
+      if (hitName === t2Name) { t1Lunge = true; t2Flash = true; }
+      if (hitName === t1Name) { t2Lunge = true; t1Flash = true; }
+    }
+
+    if (!t1Lunge && !t2Lunge && !t1Flash && !t2Flash) return;
+    if (animTimer.current) clearTimeout(animTimer.current);
+    setAnim({ t1Lunge, t2Lunge, t1Flash, t2Flash });
+    animTimer.current = setTimeout(() => {
+      setAnim({ t1Lunge: false, t2Lunge: false, t1Flash: false, t2Flash: false });
+    }, 450);
+  }, [battle?.log.length]);
+
+  useEffect(() => () => { if (animTimer.current) clearTimeout(animTimer.current); }, []);
 
   const toggleMute = () => {
     setMuted(m => {
@@ -220,7 +255,7 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
       </div>
 
       <div className="flex-1 p-4 space-y-4 max-w-lg mx-auto w-full">
-        <PokemonSide team={team2} isTop={true} showBack={false} />
+        <PokemonSide team={team2} isTop={true} showBack={false} lunging={anim.t2Lunge} flashing={anim.t2Flash} />
 
         <div className="text-center py-1">
           <div className="inline-flex items-center gap-2 bg-gray-800 rounded-full px-4 py-1.5">
@@ -237,7 +272,7 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
           </div>
         </div>
 
-        <PokemonSide team={team1} isTop={false} showBack={true} />
+        <PokemonSide team={team1} isTop={false} showBack={true} lunging={anim.t1Lunge} flashing={anim.t1Flash} />
 
         <BattleTextBox entries={log} />
 

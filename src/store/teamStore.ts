@@ -10,6 +10,7 @@ interface TeamStore {
   addPokemonToTeam: (teamId: string, pokemon: TeamPokemon) => void;
   removePokemonFromTeam: (teamId: string, pokemonId: number) => void;
   updatePokemonMoves: (teamId: string, pokemonId: number, moves: TeamPokemon['selectedMoves']) => void;
+  updatePokemonAbility: (teamId: string, pokemonId: number, ability: string) => void;
   reorderPokemon: (teamId: string, fromIndex: number, toIndex: number) => void;
 }
 
@@ -58,6 +59,15 @@ export const useTeamStore = create<TeamStore>()(
                     p.id === pokemonId ? { ...p, selectedMoves: moves } : p
                   ),
                 }
+              : t
+          ),
+        })),
+
+      updatePokemonAbility: (teamId, pokemonId, ability) =>
+        set((s) => ({
+          teams: s.teams.map((t) =>
+            t.id === teamId
+              ? { ...t, pokemon: t.pokemon.map((p) => p.id === pokemonId ? { ...p, ability } : p) }
               : t
           ),
         })),

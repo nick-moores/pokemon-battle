@@ -18,3 +18,31 @@ img {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
+
+/* Battle sprite animations */
+@keyframes pokemon-lunge-up {
+  0%   { transform: translateY(0) translateX(0); }
+  35%  { transform: translateY(-38px) translateX(10px); }
+  70%  { transform: translateY(0) translateX(0); }
+  100% { transform: translateY(0) translateX(0); }
+}
+
+@keyframes pokemon-lunge-down {
+  0%   { transform: translateY(0) translateX(0); }
+  35%  { transform: translateY(38px) translateX(-10px); }
+  70%  { transform: translateY(0) translateX(0); }
+  100% { transform: translateY(0) translateX(0); }
+}
+
+@keyframes pokemon-flash {
+  0%   { filter: none; }
+  15%  { filter: brightness(0) invert(1); }
+  35%  { filter: none; }
+  55%  { filter: brightness(0) invert(1); }
+  75%  { filter: none; }
+  100% { filter: none; }
+}
+
+.pokemon-lunge-up   { animation: pokemon-lunge-up   0.42s ease-in-out; }
+.pokemon-lunge-down { animation: pokemon-lunge-down 0.42s ease-in-out; }
+.pokemon-flash      { animation: pokemon-flash      0.42s ease-in-out; }

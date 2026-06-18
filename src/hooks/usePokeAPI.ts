@@ -143,6 +143,9 @@ export async function fetchPokemon(nameOrId: string | number): Promise<BasePokem
   }
 
   const availableMoveNames: string[] = data.moves.map((m: any) => m.move.name as string);
+  const availableAbilities: string[] = (data.abilities as any[])
+    .sort((a, b) => a.slot - b.slot)
+    .map(a => a.ability.name as string);
 
   const pokemon: BasePokemon = {
     id: data.id,
@@ -153,6 +156,7 @@ export async function fetchPokemon(nameOrId: string | number): Promise<BasePokem
     types: data.types.map((t: any) => t.type.name as string),
     stats,
     availableMoveNames,
+    availableAbilities,
   };
   pokemonCache.set(resolvedKey, pokemon);
   pokemonCache.set(key, pokemon);

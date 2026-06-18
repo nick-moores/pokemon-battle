@@ -4,6 +4,10 @@ import { Team, TeamPokemon, Move, BasePokemon } from '../types';
 import { fetchPokemon, fetchMove, usePokemonSearch } from '../hooks/usePokeAPI';
 import { TypeBadge } from '../components/TypeBadge';
 
+function formatAbilityName(name: string): string {
+  return name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 interface TeamBuilderScreenProps {
   onBack: () => void;
 }
@@ -212,7 +216,7 @@ function TeamCard({ team, onEdit }: { team: Team; onEdit: () => void }) {
 }
 
 function EditTeam({ team, onBack }: { team: Team; onBack: () => void }) {
-  const { addPokemonToTeam, removePokemonFromTeam, updateTeam, reorderPokemon } = useTeamStore();
+  const { addPokemonToTeam, removePokemonFromTeam, updateTeam, reorderPokemon, updatePokemonAbility } = useTeamStore();
   const [query, setQuery] = useState('');
   const [editingMoves, setEditingMoves] = useState<TeamPokemon | null>(null);
   const [teamName, setTeamName] = useState(team.name);
@@ -229,7 +233,7 @@ function EditTeam({ team, onBack }: { team: Team; onBack: () => void }) {
   const addToTeam = () => {
     if (!found || currentTeam.pokemon.length >= 6) return;
     if (currentTeam.pokemon.find(p => p.id === found.id)) return;
-    addPokemonToTeam(team.id, { ...found, selectedMoves: [] });
+    addPokemonToTeam(team.id, { ...found, selectedMoves: [], ability: found.availableAbilities[0] ?? '' });
     clear();
     setQuery('');
   };
@@ -333,6 +337,25 @@ function EditTeam({ team, onBack }: { team: Team; onBack: () => void }) {
                 <div className="flex gap-1 mt-0.5">
                   {p.types.map(t => <TypeBadge key={t} type={t} small />)}
                 </div>
+                {(p.availableAbilities ?? []).length > 0 && (
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <span className="text-[9px] text-gray-500">Ability:</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const abilities = p.availableAbilities ?? [];
+                        if (abilities.length <= 1) return;
+                        const idx = abilities.indexOf(p.ability ?? abilities[0]);
+                        updatePokemonAbility(team.id, p.id, abilities[(idx + 1) % abilities.length]);
+                      }}
+                      className="text-[9px] text-yellow-300 bg-gray-700 hover:bg-gray-600 rounded px-1.5 py-0.5 transition-colors"
+                      title={(p.availableAbilities ?? []).length > 1 ? 'Click to cycle abilities' : undefined}
+                    >
+                      {formatAbilityName(p.ability || (p.availableAbilities ?? [])[0] || '—')}
+                      {(p.availableAbilities ?? []).length > 1 && <span className="text-gray-500 ml-1">↻</span>}
+                    </button>
+                  </div>
+                )}
                 <div className="text-xs text-gray-500 mt-0.5">
                   {p.selectedMoves.length > 0
                     ? p.selectedMoves.map(m => m.displayName).join(', ')
