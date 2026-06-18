@@ -317,17 +317,25 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
             )}
 
             <div className="flex gap-2 mt-2">
-              <button
-                onClick={() => {
-                  const switchPhase = isTeam1Turn ? 'switch-team1' : 'switch-team2';
-                  useBattleStore.setState(s => ({
-                    battle: s.battle ? { ...s.battle, phase: switchPhase as any } : null
-                  }));
-                }}
-                className="flex-1 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-sm font-bold"
-              >
-                Switch Pokemon
-              </button>
+              {(() => {
+                const activeTeam = isTeam1Turn ? team1 : team2;
+                const canSwitch = activeTeam.pokemon.some((p, i) => i !== activeTeam.activeIndex && !p.isFainted);
+                return (
+                  <button
+                    onClick={() => {
+                      const switchPhase = isTeam1Turn ? 'switch-team1' : 'switch-team2';
+                      useBattleStore.setState(s => ({
+                        battle: s.battle ? { ...s.battle, phase: switchPhase as any } : null
+                      }));
+                    }}
+                    disabled={!canSwitch}
+                    className="flex-1 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed text-sm font-bold"
+                    title={!canSwitch ? 'No other Pokémon available' : undefined}
+                  >
+                    Switch Pokemon
+                  </button>
+                );
+              })()}
               <button
                 onClick={() => {
                   if (confirm(`${activeTeamName} forfeit? This will end the battle.`)) {
