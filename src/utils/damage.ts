@@ -8,6 +8,16 @@ export interface DamageResult {
   effectiveness: number;
   isStab: boolean;
   isCrit: boolean;
+  // audit fields — everything that went into the final number
+  atkStatEffective: number;
+  defStatEffective: number;
+  atkStage: number;
+  defStage: number;
+  stabMult: number;
+  weatherMult: number;
+  abilityMult: number;
+  abilityNote: string;
+  randomFactor: number;
 }
 
 // Stage formula: multiplier = max(2, 2+stage) / max(2, 2-stage)
@@ -39,15 +49,14 @@ export function getWeatherMultiplier(weather: WeatherType | null, moveType: stri
 }
 
 export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon, move: Move, weather: WeatherType | null = null): DamageResult {
-  if (move.damageClass === 'status') {
-    return { damage: 0, effectiveness: 1, isStab: false, isCrit: false };
-  }
-  if (move.category === 'ohko') {
-    return { damage: defender.currentHp, effectiveness: 1, isStab: false, isCrit: false };
-  }
-  if (!move.power || move.power === 0) {
-    return { damage: 0, effectiveness: 1, isStab: false, isCrit: false };
-  }
+  const zero: Omit<DamageResult, 'damage' | 'effectiveness'> = {
+    isStab: false, isCrit: false,
+    atkStatEffective: 0, defStatEffective: 0, atkStage: 0, defStage: 0,
+    stabMult: 1, weatherMult: 1, abilityMult: 1, abilityNote: '', randomFactor: 1,
+  };
+  if (move.damageClass === 'status') return { damage: 0, effectiveness: 1, ...zero };
+  if (move.category === 'ohko') return { damage: defender.currentHp, effectiveness: 1, ...zero };
+  if (!move.power || move.power === 0) return { damage: 0, effectiveness: 1, ...zero };
 
   const atkStage = move.damageClass === 'special'
     ? (attacker.stages?.specialAttack ?? 0)
@@ -57,15 +66,18 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
     : (defender.stages?.defense ?? 0);
 
   const isCrit = Math.random() < 0.0625;
-  // Crits ignore attacker's negative stages and defender's positive stages
   const effectiveAtkStage = isCrit ? Math.max(0, atkStage) : atkStage;
   const effectiveDefStage = isCrit ? Math.min(0, defStage) : defStage;
+
+  let abilityNote = '';
+  let abilityMult = 1;
 
   // Huge Power / Pure Power double the base Attack before stage calc
   let baseAtk = move.damageClass === 'special' ? attacker.stats.specialAttack : attacker.stats.attack;
   if (move.damageClass === 'physical' &&
       (attacker.ability === 'huge-power' || attacker.ability === 'pure-power')) {
     baseAtk *= 2;
+    abilityNote = 'Huge Power (×2 Atk)';
   }
 
   let atkStat = getStagedStat(baseAtk, effectiveAtkStage);
@@ -77,8 +89,10 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
   // Guts: 1.5× physical Attack when statused (burn penalty removed too)
   if (move.damageClass === 'physical' && attacker.ability === 'guts' && attacker.status !== 'none') {
     atkStat = Math.floor(atkStat * 1.5);
+    abilityNote = 'Guts (×1.5 Atk)';
   } else if (move.damageClass === 'physical' && attacker.status === 'burn') {
     atkStat = Math.floor(atkStat * 0.5);
+    abilityNote = 'Burn (×0.5 Atk)';
   }
 
   // Sandstorm boosts Rock-type Special Defense by 50%
@@ -87,19 +101,29 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
   }
 
   const effectiveness = getTypeEffectiveness(move.type, defender.types);
-  if (effectiveness === 0) return { damage: 0, effectiveness: 0, isStab: false, isCrit: false };
+  if (effectiveness === 0) {
+    return { damage: 0, effectiveness: 0, ...zero };
+  }
 
   const isStab = attacker.types.includes(move.type.toLowerCase());
   const stabMult = isStab ? (attacker.ability === 'adaptability' ? 2.0 : 1.5) : 1;
+  if (isStab && attacker.ability === 'adaptability' && !abilityNote) abilityNote = 'Adaptability (×2.0 STAB)';
   const critMult = isCrit ? 1.5 : 1;
   const weatherMult = getWeatherMultiplier(weather, move.type.toLowerCase());
   const flashFireMult = (attacker.ability === 'flash-fire' && attacker.flashFireActive && move.type.toLowerCase() === 'fire') ? 1.5 : 1;
+  if (flashFireMult > 1 && !abilityNote) abilityNote = 'Flash Fire (×1.5 Fire)';
+  abilityMult = flashFireMult;
+
   const randomFactor = (Math.floor(Math.random() * 16) + 85) / 100;
 
   const base = Math.floor((2 * LEVEL / 5 + 2) * move.power * atkStat / defStat);
-  const damage = Math.max(1, Math.floor((Math.floor(base / 50) + 2) * stabMult * effectiveness * critMult * weatherMult * flashFireMult * randomFactor));
+  const damage = Math.max(1, Math.floor((Math.floor(base / 50) + 2) * stabMult * effectiveness * critMult * weatherMult * abilityMult * randomFactor));
 
-  return { damage, effectiveness, isStab, isCrit };
+  return {
+    damage, effectiveness, isStab, isCrit,
+    atkStatEffective: atkStat, defStatEffective: defStat,
+    atkStage, defStage, stabMult, weatherMult, abilityMult, abilityNote, randomFactor,
+  };
 }
 
 export interface DamageBreakdown {

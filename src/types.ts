@@ -100,10 +100,31 @@ export type TurnPhase =
   | 'switch-team2'
   | 'game-over';
 
+export interface DamageCalcRecord {
+  moveName: string;
+  attackerName: string;
+  power: number;
+  category: string;
+  atkStat: number;       // effective (after stage + ability)
+  defStat: number;       // effective (after stage + ability)
+  atkStage: number;
+  defStage: number;
+  stabMult: number;
+  effectiveness: number;
+  weatherMult: number;
+  abilityMult: number;   // combined ability multiplier on damage
+  abilityNote: string;
+  isCrit: boolean;
+  randomFactor: number;  // 0.85–1.00
+  finalDamage: number;
+  defenderMaxHp: number;
+}
+
 export interface BattleLogEntry {
   id: number;
   text: string;
   type: 'move' | 'damage' | 'status' | 'faint' | 'switch' | 'effectiveness' | 'info';
+  damageCalc?: DamageCalcRecord;
 }
 
 export interface BattleState {

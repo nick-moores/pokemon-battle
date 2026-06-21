@@ -52,8 +52,8 @@ const TWO_TURN_MOVES: Record<string, { chargeMsg: string; invulnerable: boolean 
 };
 
 let logId = 0;
-function log(text: string, type: BattleLogEntry['type'] = 'info'): BattleLogEntry {
-  return { id: logId++, text, type };
+function log(text: string, type: BattleLogEntry['type'] = 'info', damageCalc?: BattleLogEntry['damageCalc']): BattleLogEntry {
+  return { id: logId++, text, type, damageCalc };
 }
 
 // Convert base stats (Pokedex values) to actual level-50 stats
@@ -328,7 +328,8 @@ function executeMove(
     return { atk, def };
   }
 
-  const { damage, effectiveness, isCrit } = calculateDamage(atk, def, move, weather);
+  const calcResult = calculateDamage(atk, def, move, weather);
+  const { damage, effectiveness, isCrit } = calcResult;
 
   if (effectiveness === 0) {
     logs.push(log(`It doesn't affect ${def.displayName}...`, 'effectiveness'));
@@ -340,7 +341,25 @@ function executeMove(
   if (isCrit) logs.push(log('A critical hit!', 'info'));
 
   def = applyDamage(def, damage);
-  logs.push(log(`${def.displayName} took ${damage} damage!`, 'damage'));
+  logs.push(log(`${def.displayName} took ${damage} damage!`, 'damage', {
+    moveName: move.displayName,
+    attackerName: atk.displayName,
+    power: move.power ?? 0,
+    category: move.damageClass,
+    atkStat: calcResult.atkStatEffective,
+    defStat: calcResult.defStatEffective,
+    atkStage: calcResult.atkStage,
+    defStage: calcResult.defStage,
+    stabMult: calcResult.stabMult,
+    effectiveness,
+    weatherMult: calcResult.weatherMult,
+    abilityMult: calcResult.abilityMult,
+    abilityNote: calcResult.abilityNote,
+    isCrit,
+    randomFactor: calcResult.randomFactor,
+    finalDamage: damage,
+    defenderMaxHp: def.stats.hp,
+  }));
   if (def.isFainted) logs.push(log(`${def.displayName} fainted!`, 'faint'));
 
   if (!def.isFainted && move.ailmentChance > 0 && Math.random() * 100 < move.ailmentChance) {
