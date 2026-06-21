@@ -471,29 +471,49 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
                   Use Struggle
                 </button>
               </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-2">
-                  {activeMoves.map(move => (
-                    <div
-                      key={move.id}
-                      onMouseEnter={() => setHoveredMove(move)}
-                      onMouseLeave={() => setHoveredMove(null)}
-                    >
-                      <MoveButton
-                        move={move}
-                        defenderTypes={opponentPokemon?.types}
-                        onClick={() => selectMove(isTeam1Turn ? 1 : 2, move)}
-                      />
-                    </div>
-                  ))}
+            ) : (() => {
+              const ppList = activePokemon?.currentPP ?? activeMoves.map(m => m.pp);
+              const allOutOfPP = activeMoves.length > 0 && activeMoves.every((_, i) => (ppList[i] ?? 1) === 0);
+              const struggle: Move = {
+                id: -1, name: 'struggle', displayName: 'Struggle',
+                type: 'normal', power: 50, accuracy: null, pp: 1, damageClass: 'physical', category: '',
+                effectEntry: 'Deals recoil damage.', ailment: 'none', ailmentChance: 0, statChanges: [],
+              };
+              return allOutOfPP ? (
+                <div className="bg-gray-800 rounded-2xl p-4 text-center text-gray-400">
+                  <div className="text-sm mb-2 text-orange-400 font-bold">All moves are out of PP!</div>
+                  <button
+                    onClick={() => selectMove(isTeam1Turn ? 1 : 2, struggle)}
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-xl font-bold text-sm text-white"
+                  >
+                    Use Struggle
+                  </button>
                 </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    {activeMoves.map((move, i) => (
+                      <div
+                        key={move.id}
+                        onMouseEnter={() => setHoveredMove(move)}
+                        onMouseLeave={() => setHoveredMove(null)}
+                      >
+                        <MoveButton
+                          move={move}
+                          defenderTypes={opponentPokemon?.types}
+                          currentPP={ppList[i]}
+                          onClick={() => selectMove(isTeam1Turn ? 1 : 2, move)}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 {hoveredMove && activePokemon && opponentPokemon && (() => {
                   const bd = getDamageBreakdown(activePokemon, opponentPokemon, hoveredMove, weather);
                   return bd ? <DamageForecast breakdown={bd} moveName={hoveredMove.displayName} /> : null;
                 })()}
               </>
-            )}
+              );
+            })()}
 
             {activePokemon && opponentPokemon && (
               <div>

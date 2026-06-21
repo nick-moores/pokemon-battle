@@ -86,6 +86,7 @@ function initBattlePokemon(p: Team['pokemon'][0]): BattlePokemon {
     flashFireActive: false,
     chargingMove: null,
     isInvulnerable: false,
+    currentPP: p.selectedMoves.map(m => m.pp),
   };
 }
 
@@ -532,6 +533,18 @@ export const useBattleStore = create<BattleStore>()(
           atk = { ...atk, pokemon: updatedAtkPokemon };
 
           if (!canMove || atkPokemon.isFainted) return { atk, def };
+
+          // Decrement PP on the turn the move is chosen (not the auto-release turn)
+          if (!wasCharging) {
+            const ppIdx = atkPokemon.selectedMoves.findIndex(m => m.id === moveToUse.id);
+            if (ppIdx >= 0) {
+              const newPP = [...(atkPokemon.currentPP ?? atkPokemon.selectedMoves.map(m => m.pp))];
+              newPP[ppIdx] = Math.max(0, newPP[ppIdx] - 1);
+              atkPokemon = { ...atkPokemon, currentPP: newPP };
+              const ppArr = [...atk.pokemon]; ppArr[atkIdx] = atkPokemon;
+              atk = { ...atk, pokemon: ppArr };
+            }
+          }
 
           const defPokemon = def.pokemon[defIdx];
           const teamLabel = `${isT1 ? t1.name : t2.name}'s ${atkPokemon.displayName}`;

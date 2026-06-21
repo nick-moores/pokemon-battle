@@ -85,6 +85,7 @@ export interface BattlePokemon extends TeamPokemon {
   flashFireActive: boolean;
   chargingMove: Move | null;
   isInvulnerable: boolean;
+  currentPP: number[];  // parallel to selectedMoves
 }
 
 export interface BattleTeam {
