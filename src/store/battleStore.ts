@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import {
   BattleState, BattleTeam, BattlePokemon, Move, Team,
-  StatusCondition, BattleRecord, BattleLogEntry, WeatherType
+  StatusCondition, BattleRecord, BattleLogEntry, WeatherType, PokemonStats
 } from '../types';
 import { calculateDamage, getStatusTickDamage, getStagedSpeed, ZERO_STAGES } from '../utils/damage';
 import { Stages } from '../types';
@@ -56,11 +56,27 @@ function log(text: string, type: BattleLogEntry['type'] = 'info'): BattleLogEntr
   return { id: logId++, text, type };
 }
 
+// Convert base stats (Pokedex values) to actual level-50 stats
+// Formula: floor((2*base + 31) * 50/100) + offset  (31 IVs, 0 EVs, neutral nature)
+function toLevel50Stats(base: PokemonStats): PokemonStats {
+  const s = (b: number) => Math.floor((2 * b + 31) * 50 / 100) + 5;
+  return {
+    hp: Math.floor((2 * base.hp + 31) * 50 / 100) + 60,
+    attack: s(base.attack),
+    defense: s(base.defense),
+    specialAttack: s(base.specialAttack),
+    specialDefense: s(base.specialDefense),
+    speed: s(base.speed),
+  };
+}
+
 function initBattlePokemon(p: Team['pokemon'][0]): BattlePokemon {
+  const battleStats = toLevel50Stats(p.stats);
   return {
     ...p,
+    stats: battleStats,
     ability: p.ability || (p.availableAbilities?.[0] ?? ''),
-    currentHp: p.stats.hp,
+    currentHp: battleStats.hp,
     status: 'none',
     confusionTurns: 0,
     sleepTurns: 0,

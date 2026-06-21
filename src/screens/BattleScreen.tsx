@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useBattleStore } from '../store/battleStore';
 import { battleMusic } from '../utils/battleMusic';
-import { BattlePokemon, BattleTeam, Move } from '../types';
+import { BattlePokemon, BattleTeam, Move, WeatherType } from '../types';
 import { HPBar } from '../components/HPBar';
 import { StatusBadge } from '../components/StatusBadge';
 import { MoveButton } from '../components/MoveButton';
 import { TypeBadge } from '../components/TypeBadge';
 import { BattleLog, BattleTextBox } from '../components/BattleLog';
+import { getDamageBreakdown, DamageBreakdown, getStagedStat } from '../utils/damage';
 
 function PokemonSide({
   team,
@@ -124,6 +125,146 @@ function SwitchPanel({ team, onSwitch }: { team: BattleTeam; onSwitch: (i: numbe
   );
 }
 
+function pct(n: number, max: number) { return Math.round((n / max) * 100); }
+
+function stageLabel(stage: number) {
+  if (stage === 0) return <span className="text-gray-500">—</span>;
+  return <span className={stage > 0 ? 'text-green-400' : 'text-red-400'}>{stage > 0 ? `+${stage}` : stage}</span>;
+}
+
+function DamageForecast({ breakdown, moveName }: { breakdown: DamageBreakdown; moveName: string }) {
+  const { minDamage, maxDamage, critMax, defenderMaxHp, effectiveness } = breakdown;
+  if (effectiveness === 0) {
+    return (
+      <div className="bg-gray-900 border border-gray-700 rounded-xl p-3 text-xs text-gray-300 space-y-1">
+        <div className="font-bold text-white">{moveName}</div>
+        <div className="text-red-400 font-bold">Immune — no effect</div>
+      </div>
+    );
+  }
+  const minPct = pct(minDamage, defenderMaxHp);
+  const maxPct = pct(maxDamage, defenderMaxHp);
+  const critPct = pct(critMax, defenderMaxHp);
+  const multParts: string[] = [];
+  if (breakdown.isStab) multParts.push(`STAB ×${breakdown.stabMult.toFixed(1)}`);
+  if (breakdown.effectiveness !== 1) {
+    const eff = breakdown.effectiveness;
+    const label = eff >= 4 ? '×4' : eff >= 2 ? '×2' : eff === 0.5 ? '×0.5' : '×0.25';
+    multParts.push(`Type ${label}`);
+  }
+  if (breakdown.weatherMult !== 1) multParts.push(`Weather ×${breakdown.weatherMult}`);
+
+  return (
+    <div className="bg-gray-900 border border-gray-700 rounded-xl p-3 text-xs text-gray-300 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="font-bold text-white">{moveName}</span>
+        <span className="text-gray-500">Pwr {breakdown.power} · {breakdown.category === 'special' ? 'Sp.' : 'Phys.'}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+        <div className="text-gray-400">
+          {breakdown.category === 'special' ? 'Sp. Atk' : 'Attack'}
+        </div>
+        <div>
+          {breakdown.atkStatRaw}
+          {breakdown.atkStage !== 0 && <> × stage {stageLabel(breakdown.atkStage)}</>}
+          {breakdown.atkStatEffective !== breakdown.atkStatRaw && (
+            <span className="text-yellow-400"> = {breakdown.atkStatEffective}</span>
+          )}
+        </div>
+        <div className="text-gray-400">
+          {breakdown.category === 'special' ? 'Sp. Def' : 'Defense'}
+        </div>
+        <div>
+          {breakdown.defStatRaw}
+          {breakdown.defStage !== 0 && <> × stage {stageLabel(breakdown.defStage)}</>}
+          {breakdown.defStatEffective !== breakdown.defStatRaw && (
+            <span className="text-yellow-400"> = {breakdown.defStatEffective}</span>
+          )}
+        </div>
+      </div>
+      {multParts.length > 0 && (
+        <div className="text-purple-300">{multParts.join(' · ')}</div>
+      )}
+      {breakdown.abilityNote && (
+        <div className="text-blue-300">⚡ {breakdown.abilityNote}</div>
+      )}
+      <div className="border-t border-gray-700 pt-2 flex items-center justify-between">
+        <div>
+          <span className="text-white font-bold">{minDamage}–{maxDamage}</span>
+          <span className="text-gray-400 ml-1">({minPct}–{maxPct}% HP)</span>
+        </div>
+        <div className="text-yellow-400 text-[10px]">
+          Crit: {critMax} ({critPct}%)
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatsAudit({ attacker, defender, weather }: { attacker: BattlePokemon; defender: BattlePokemon; weather: WeatherType | null }) {
+  const rows: [string, keyof BattlePokemon['stats'], keyof BattlePokemon['stages']][] = [
+    ['HP', 'hp', 'attack'], // stages n/a for HP, placeholder
+    ['Attack', 'attack', 'attack'],
+    ['Defense', 'defense', 'defense'],
+    ['Sp. Atk', 'specialAttack', 'specialAttack'],
+    ['Sp. Def', 'specialDefense', 'specialDefense'],
+    ['Speed', 'speed', 'speed'],
+  ];
+  const cell = (p: BattlePokemon, stat: keyof BattlePokemon['stats'], stageKey: keyof BattlePokemon['stages']) => {
+    const base = p.stats[stat];
+    if (stat === 'hp') return (
+      <td className="text-center px-2 py-1">
+        <span className="text-white">{p.currentHp}</span>
+        <span className="text-gray-500">/{base}</span>
+      </td>
+    );
+    const stage = p.stages?.[stageKey] ?? 0;
+    const effective = getStagedStat(base, stage);
+    return (
+      <td className="text-center px-2 py-1">
+        <span className="text-white">{base}</span>
+        {stage !== 0 && (
+          <span className={`ml-1 text-[10px] font-bold ${stage > 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {stage > 0 ? `+${stage}` : stage}
+          </span>
+        )}
+        {stage !== 0 && (
+          <span className="text-yellow-400 ml-1">→{effective}</span>
+        )}
+      </td>
+    );
+  };
+
+  return (
+    <div className="bg-gray-900 border border-gray-700 rounded-xl p-3 overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-gray-400">
+            <th className="text-left px-2 py-1">Stat</th>
+            <th className="text-center px-2 py-1 text-blue-300">{attacker.displayName}</th>
+            <th className="text-center px-2 py-1 text-red-300">{defender.displayName}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-800">
+          {rows.map(([label, stat, stageKey]) => (
+            <tr key={label}>
+              <td className="text-gray-400 px-2 py-1">{label}</td>
+              {cell(attacker, stat, stageKey)}
+              {cell(defender, stat, stageKey)}
+            </tr>
+          ))}
+          <tr>
+            <td className="text-gray-400 px-2 py-1">Ability</td>
+            <td className="text-center px-2 py-1 text-blue-300 capitalize">{attacker.ability?.replace(/-/g, ' ') || '—'}</td>
+            <td className="text-center px-2 py-1 text-red-300 capitalize">{defender.ability?.replace(/-/g, ' ') || '—'}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div className="mt-2 text-[10px] text-gray-600 text-center">Lv 50 · 31 IVs · 0 EVs · neutral nature</div>
+    </div>
+  );
+}
+
 interface BattleScreenProps {
   onEnd: () => void;
 }
@@ -131,6 +272,8 @@ interface BattleScreenProps {
 export function BattleScreen({ onEnd }: BattleScreenProps) {
   const { battle, selectMove, switchPokemon, clearBattle } = useBattleStore();
   const [muted, setMuted] = useState(false);
+  const [hoveredMove, setHoveredMove] = useState<Move | null>(null);
+  const [showStats, setShowStats] = useState(false);
   const [anim, setAnim] = useState({ t1Lunge: false, t2Lunge: false, t1Flash: false, t2Flash: false });
   const prevLogLen = useRef(battle?.log.length ?? 0);
   const animTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -322,15 +465,41 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
-                {activeMoves.map(move => (
-                  <MoveButton
-                    key={move.id}
-                    move={move}
-                    defenderTypes={opponentPokemon?.types}
-                    onClick={() => selectMove(isTeam1Turn ? 1 : 2, move)}
-                  />
-                ))}
+              <>
+                {hoveredMove && activePokemon && opponentPokemon && (() => {
+                  const bd = getDamageBreakdown(activePokemon, opponentPokemon, hoveredMove, weather);
+                  return bd ? <DamageForecast breakdown={bd} moveName={hoveredMove.displayName} /> : null;
+                })()}
+                <div className="grid grid-cols-2 gap-2">
+                  {activeMoves.map(move => (
+                    <div
+                      key={move.id}
+                      onMouseEnter={() => setHoveredMove(move)}
+                      onMouseLeave={() => setHoveredMove(null)}
+                    >
+                      <MoveButton
+                        move={move}
+                        defenderTypes={opponentPokemon?.types}
+                        onClick={() => selectMove(isTeam1Turn ? 1 : 2, move)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {activePokemon && opponentPokemon && (
+              <div>
+                <button
+                  onClick={() => setShowStats(s => !s)}
+                  className="w-full text-xs text-gray-500 hover:text-gray-300 py-1 flex items-center justify-center gap-1"
+                >
+                  <span>{showStats ? '▲' : '▼'}</span>
+                  {showStats ? 'Hide stats' : '📊 Show stats & audit'}
+                </button>
+                {showStats && (
+                  <StatsAudit attacker={activePokemon} defender={opponentPokemon} weather={weather} />
+                )}
               </div>
             )}
 

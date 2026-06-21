@@ -102,6 +102,113 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
   return { damage, effectiveness, isStab, isCrit };
 }
 
+export interface DamageBreakdown {
+  power: number;
+  category: string;
+  atkStatRaw: number;
+  atkStatEffective: number;
+  defStatRaw: number;
+  defStatEffective: number;
+  atkStage: number;
+  defStage: number;
+  isStab: boolean;
+  stabMult: number;
+  effectiveness: number;
+  weatherMult: number;
+  abilityNote: string;
+  minDamage: number;
+  maxDamage: number;
+  critMax: number;
+  defenderMaxHp: number;
+}
+
+export function getDamageBreakdown(
+  attacker: BattlePokemon,
+  defender: BattlePokemon,
+  move: Move,
+  weather: WeatherType | null = null,
+): DamageBreakdown | null {
+  if (move.damageClass === 'status' || !move.power) return null;
+  if (move.category === 'ohko') {
+    return {
+      power: 0, category: move.damageClass,
+      atkStatRaw: 0, atkStatEffective: 0, defStatRaw: 0, defStatEffective: 0,
+      atkStage: 0, defStage: 0, isStab: false, stabMult: 1, effectiveness: 1,
+      weatherMult: 1, abilityNote: 'One-Hit KO move',
+      minDamage: defender.currentHp, maxDamage: defender.currentHp, critMax: defender.currentHp,
+      defenderMaxHp: defender.stats.hp,
+    };
+  }
+
+  const atkStage = move.damageClass === 'special'
+    ? (attacker.stages?.specialAttack ?? 0)
+    : (attacker.stages?.attack ?? 0);
+  const defStage = move.damageClass === 'special'
+    ? (defender.stages?.specialDefense ?? 0)
+    : (defender.stages?.defense ?? 0);
+
+  let abilityNote = '';
+  let baseAtk = move.damageClass === 'special' ? attacker.stats.specialAttack : attacker.stats.attack;
+  if (move.damageClass === 'physical' &&
+      (attacker.ability === 'huge-power' || attacker.ability === 'pure-power')) {
+    baseAtk *= 2;
+    abilityNote = 'Huge Power (×2 Atk)';
+  }
+
+  let atkStat = getStagedStat(baseAtk, atkStage);
+  let defStat = getStagedStat(
+    move.damageClass === 'special' ? defender.stats.specialDefense : defender.stats.defense,
+    defStage
+  );
+
+  if (move.damageClass === 'physical' && attacker.ability === 'guts' && attacker.status !== 'none') {
+    atkStat = Math.floor(atkStat * 1.5);
+    abilityNote = 'Guts (×1.5 Atk)';
+  } else if (move.damageClass === 'physical' && attacker.status === 'burn') {
+    atkStat = Math.floor(atkStat * 0.5);
+    abilityNote = 'Burn (×0.5 Atk)';
+  }
+  if (weather === 'sandstorm' && move.damageClass === 'special'
+      && defender.types.some(t => t.toLowerCase() === 'rock')) {
+    defStat = Math.floor(defStat * 1.5);
+  }
+
+  const effectiveness = getTypeEffectiveness(move.type, defender.types);
+  const isStab = attacker.types.includes(move.type.toLowerCase());
+  const stabMult = isStab ? (attacker.ability === 'adaptability' ? 2.0 : 1.5) : 1;
+  if (isStab && attacker.ability === 'adaptability' && !abilityNote) abilityNote = 'Adaptability (×2.0 STAB)';
+  const weatherMult = getWeatherMultiplier(weather, move.type.toLowerCase());
+  const flashFireMult = (attacker.ability === 'flash-fire' && attacker.flashFireActive
+    && move.type.toLowerCase() === 'fire') ? 1.5 : 1;
+  if (flashFireMult > 1 && !abilityNote) abilityNote = 'Flash Fire (×1.5 Fire)';
+
+  const baseRaw = Math.floor((2 * LEVEL / 5 + 2) * move.power * atkStat / defStat);
+  const calc = (rand: number, crit: number) =>
+    effectiveness === 0
+      ? 0
+      : Math.max(1, Math.floor((Math.floor(baseRaw / 50) + 2) * stabMult * effectiveness * crit * weatherMult * flashFireMult * rand));
+
+  return {
+    power: move.power,
+    category: move.damageClass,
+    atkStatRaw: move.damageClass === 'special' ? attacker.stats.specialAttack : attacker.stats.attack,
+    atkStatEffective: atkStat,
+    defStatRaw: move.damageClass === 'special' ? defender.stats.specialDefense : defender.stats.defense,
+    defStatEffective: defStat,
+    atkStage,
+    defStage,
+    isStab,
+    stabMult,
+    effectiveness,
+    weatherMult,
+    abilityNote,
+    minDamage: calc(0.85, 1),
+    maxDamage: calc(1.0, 1),
+    critMax: calc(1.0, 1.5),
+    defenderMaxHp: defender.stats.hp,
+  };
+}
+
 export function getStatusTickDamage(pokemon: BattlePokemon): number {
   const max = pokemon.stats.hp;
   if (pokemon.status === 'burn' || pokemon.status === 'poison') return Math.max(1, Math.floor(max / 8));
