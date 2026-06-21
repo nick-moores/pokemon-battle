@@ -466,10 +466,6 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
               </div>
             ) : (
               <>
-                {hoveredMove && activePokemon && opponentPokemon && (() => {
-                  const bd = getDamageBreakdown(activePokemon, opponentPokemon, hoveredMove, weather);
-                  return bd ? <DamageForecast breakdown={bd} moveName={hoveredMove.displayName} /> : null;
-                })()}
                 <div className="grid grid-cols-2 gap-2">
                   {activeMoves.map(move => (
                     <div
@@ -485,6 +481,10 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
                     </div>
                   ))}
                 </div>
+                {hoveredMove && activePokemon && opponentPokemon && (() => {
+                  const bd = getDamageBreakdown(activePokemon, opponentPokemon, hoveredMove, weather);
+                  return bd ? <DamageForecast breakdown={bd} moveName={hoveredMove.displayName} /> : null;
+                })()}
               </>
             )}
 
