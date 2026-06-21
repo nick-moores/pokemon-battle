@@ -38,6 +38,19 @@ const WEATHER_IMMUNE: Record<WeatherType, string[]> = {
   hail: ['ice'],
 };
 
+// Two-turn moves: charge turn + release turn. invulnerable = can't be hit on charge turn.
+const TWO_TURN_MOVES: Record<string, { chargeMsg: string; invulnerable: boolean }> = {
+  'dig':           { chargeMsg: 'burrowed underground!', invulnerable: true },
+  'fly':           { chargeMsg: 'flew up high!',         invulnerable: true },
+  'bounce':        { chargeMsg: 'sprang up high!',       invulnerable: true },
+  'dive':          { chargeMsg: 'dove underwater!',      invulnerable: true },
+  'phantom-force': { chargeMsg: 'vanished!',             invulnerable: true },
+  'shadow-force':  { chargeMsg: 'vanished!',             invulnerable: true },
+  'skull-bash':    { chargeMsg: 'tucked in its head!',   invulnerable: false },
+  'solar-beam':    { chargeMsg: 'absorbed light!',       invulnerable: false },
+  'meteor-beam':   { chargeMsg: 'is aiming at the sky!', invulnerable: false },
+};
+
 let logId = 0;
 function log(text: string, type: BattleLogEntry['type'] = 'info'): BattleLogEntry {
   return { id: logId++, text, type };
@@ -55,6 +68,8 @@ function initBattlePokemon(p: Team['pokemon'][0]): BattlePokemon {
     isFainted: false,
     stages: { ...ZERO_STAGES },
     flashFireActive: false,
+    chargingMove: null,
+    isInvulnerable: false,
   };
 }
 
@@ -400,13 +415,16 @@ export const useBattleStore = create<BattleStore>()(
 
         if (teamNum === 1) {
           if (battle.phase !== 'team1-move') return;
-          set({ battle: { ...battle, team1SelectedMove: move, phase: 'team2-move' } });
+          const t1Active = battle.team1.pokemon[battle.team1.activeIndex];
+          const actualMove = t1Active.chargingMove ?? move;
+          set({ battle: { ...battle, team1SelectedMove: actualMove, phase: 'team2-move' } });
           return;
         }
 
         if (battle.phase !== 'team2-move') return;
         const t1Move = battle.team1SelectedMove!;
-        const t2Move = move;
+        const t2ActivePre = battle.team2.pokemon[battle.team2.activeIndex];
+        const t2Move = t2ActivePre.chargingMove ?? move;
 
         let t1 = { ...battle.team1 };
         let t2 = { ...battle.team2 };
@@ -430,6 +448,10 @@ export const useBattleStore = create<BattleStore>()(
           let atkPokemon = atk.pokemon[atkIdx];
           if (atkPokemon.isFainted) return { atk, def };
 
+          // Capture charging state before status resolution (status doesn't affect it)
+          const moveToUse = atkPokemon.chargingMove ?? atkMove;
+          const wasCharging = !!atkPokemon.chargingMove;
+
           const { pokemon: resolved, canMove } = resolveStatusEffect(atkPokemon, logs);
           atkPokemon = resolved;
           const updatedAtkPokemon = [...atk.pokemon];
@@ -439,7 +461,36 @@ export const useBattleStore = create<BattleStore>()(
           if (!canMove || atkPokemon.isFainted) return { atk, def };
 
           const defPokemon = def.pokemon[defIdx];
-          const result = executeMove(atkPokemon, defPokemon, atkMove, `${isT1 ? t1.name : t2.name}'s ${atkPokemon.displayName}`, logs, currentWeather);
+          const teamLabel = `${isT1 ? t1.name : t2.name}'s ${atkPokemon.displayName}`;
+
+          // CHARGE TURN: two-turn move used fresh (not already charging, and not solar-beam in sun)
+          const twoTurnInfo = TWO_TURN_MOVES[moveToUse.name];
+          const isSolarInstant = moveToUse.name === 'solar-beam' && currentWeather === 'sunny';
+          if (twoTurnInfo && !wasCharging && !isSolarInstant) {
+            logs.push(log(`${teamLabel} ${twoTurnInfo.chargeMsg}`, 'move'));
+            let charged: BattlePokemon = { ...atkPokemon, chargingMove: moveToUse, isInvulnerable: twoTurnInfo.invulnerable };
+            if (moveToUse.name === 'skull-bash') charged = applyStatChanges(charged, [{ stat: 'defense', change: 1 }], logs);
+            if (moveToUse.name === 'meteor-beam') charged = applyStatChanges(charged, [{ stat: 'specialAttack', change: 1 }], logs);
+            const arr = [...atk.pokemon]; arr[atkIdx] = charged;
+            return { atk: { ...atk, pokemon: arr }, def };
+          }
+
+          // MISS: defender is invulnerable (underground/in-air)
+          if (defPokemon.isInvulnerable) {
+            const chargeName = defPokemon.chargingMove?.name ?? '';
+            const loc = (chargeName === 'dig' || chargeName === 'dive') ? 'underground' : 'in the air';
+            logs.push(log(`The attack missed! ${defPokemon.displayName} is ${loc}!`, 'info'));
+            return { atk, def };
+          }
+
+          // RELEASE TURN: clear charging state before executing the stored move
+          if (wasCharging) {
+            atkPokemon = { ...atkPokemon, chargingMove: null, isInvulnerable: false };
+            const arr = [...atk.pokemon]; arr[atkIdx] = atkPokemon;
+            atk = { ...atk, pokemon: arr };
+          }
+
+          const result = executeMove(atkPokemon, defPokemon, moveToUse, teamLabel, logs, currentWeather);
           // Propagate weather change immediately so the second move sees it
           if (result.newWeather !== undefined) {
             currentWeather = result.newWeather;
@@ -587,9 +638,12 @@ export const useBattleStore = create<BattleStore>()(
         if (teamNum === 1) {
           const newPokemon = battle.team1.pokemon[pokemonIndex];
           logs.push(log(`${battle.team1.name} sent out ${newPokemon.displayName}!`, 'switch'));
-          const resetPokemon = battle.team1.pokemon.map((p, i) =>
-            i === pokemonIndex ? { ...p, stages: { ...ZERO_STAGES } } : p
-          );
+          const outIdx1 = battle.team1.activeIndex;
+          const resetPokemon = battle.team1.pokemon.map((p, i) => {
+            if (i === pokemonIndex) return { ...p, stages: { ...ZERO_STAGES } };
+            if (i === outIdx1) return { ...p, chargingMove: null, isInvulnerable: false };
+            return p;
+          });
           let t1 = { ...battle.team1, activeIndex: pokemonIndex, pokemon: resetPokemon };
           let t2 = battle.team2;
           // Apply entry ability of the incoming Pokemon
@@ -605,9 +659,12 @@ export const useBattleStore = create<BattleStore>()(
         } else {
           const newPokemon = battle.team2.pokemon[pokemonIndex];
           logs.push(log(`${battle.team2.name} sent out ${newPokemon.displayName}!`, 'switch'));
-          const resetPokemon = battle.team2.pokemon.map((p, i) =>
-            i === pokemonIndex ? { ...p, stages: { ...ZERO_STAGES } } : p
-          );
+          const outIdx2 = battle.team2.activeIndex;
+          const resetPokemon = battle.team2.pokemon.map((p, i) => {
+            if (i === pokemonIndex) return { ...p, stages: { ...ZERO_STAGES } };
+            if (i === outIdx2) return { ...p, chargingMove: null, isInvulnerable: false };
+            return p;
+          });
           let t2 = { ...battle.team2, activeIndex: pokemonIndex, pokemon: resetPokemon };
           let t1 = battle.team1;
           // Apply entry ability of the incoming Pokemon

@@ -82,6 +82,8 @@ export interface BattlePokemon extends TeamPokemon {
   isFainted: boolean;
   stages: Stages;
   flashFireActive: boolean;
+  chargingMove: Move | null;
+  isInvulnerable: boolean;
 }
 
 export interface BattleTeam {

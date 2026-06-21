@@ -286,10 +286,28 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
         {(isTeam1Turn || isTeam2Turn) && (
           <div className="space-y-2">
             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
-              {activeTeamName}'s {activePokemon?.displayName} — Choose a move
+              {activeTeamName}'s {activePokemon?.displayName} — {activePokemon?.chargingMove ? 'Charging...' : 'Choose a move'}
             </div>
 
-            {activeMoves.length === 0 ? (
+            {activePokemon?.chargingMove ? (
+              <div className="bg-gray-800 rounded-2xl p-4 text-center">
+                <div className="text-2xl mb-2">
+                  {activePokemon.chargingMove.name === 'dig' || activePokemon.chargingMove.name === 'dive' ? '🕳️'
+                    : activePokemon.chargingMove.name === 'fly' || activePokemon.chargingMove.name === 'bounce' ? '🌤️'
+                    : activePokemon.chargingMove.name === 'solar-beam' || activePokemon.chargingMove.name === 'meteor-beam' ? '✨'
+                    : activePokemon.chargingMove.name === 'phantom-force' || activePokemon.chargingMove.name === 'shadow-force' ? '👻'
+                    : '⚡'}
+                </div>
+                <div className="text-white font-bold mb-1">{activePokemon.displayName} is charging {activePokemon.chargingMove.displayName}!</div>
+                <div className="text-gray-400 text-xs mb-3">The move will strike next turn.</div>
+                <button
+                  onClick={() => selectMove(isTeam1Turn ? 1 : 2, activePokemon.chargingMove!)}
+                  className="px-6 py-2 bg-blue-700 hover:bg-blue-600 rounded-xl font-bold text-sm text-white"
+                >
+                  Continue →
+                </button>
+              </div>
+            ) : activeMoves.length === 0 ? (
               <div className="bg-gray-800 rounded-2xl p-4 text-center text-gray-500">
                 <div className="mb-2">No moves assigned!</div>
                 <button
