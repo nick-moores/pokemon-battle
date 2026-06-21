@@ -101,6 +101,7 @@ export async function fetchMove(name: string): Promise<Move | null> {
       displayName: formatName(data.name),
       type: data.type.name,
       power: data.power,
+      accuracy: data.accuracy ?? null,
       pp: data.pp,
       damageClass: data.damage_class.name,
       effectEntry: effect?.short_effect?.replace(/\$effect_chance/g, `${data.effect_chance ?? ''}`) ?? '',

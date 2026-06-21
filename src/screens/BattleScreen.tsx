@@ -463,7 +463,7 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
                 <button
                   onClick={() => selectMove(isTeam1Turn ? 1 : 2, {
                     id: -1, name: 'struggle', displayName: 'Struggle',
-                    type: 'normal', power: 50, pp: 10, damageClass: 'physical', category: '',
+                    type: 'normal', power: 50, accuracy: null, pp: 10, damageClass: 'physical', category: '',
                     effectEntry: 'Deals recoil damage.', ailment: 'none', ailmentChance: 0, statChanges: [],
                   })}
                   className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-xl font-bold text-sm"

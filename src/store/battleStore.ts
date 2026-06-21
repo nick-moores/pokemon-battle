@@ -260,12 +260,50 @@ function executeMove(
   let atk = attacker;
   let def = defender;
 
+  // Accuracy check — move.accuracy is null for always-hit moves (Swift, Aerial Ace, etc.)
+  // Old saved moves without the field also always hit (backward compatible)
+  const moveAcc: number | null = (move as any).accuracy ?? null;
+  if (moveAcc != null) {
+    const accStage = attacker.stages?.accuracy ?? 0;
+    const evaStage = defender.stages?.evasion ?? 0;
+    // Accuracy/evasion stage multiplier: max(3, 3+stage) / max(3, 3-stage)
+    const accMult = Math.max(3, 3 + accStage) / Math.max(3, 3 - accStage);
+    const evaMult = Math.max(3, 3 + evaStage) / Math.max(3, 3 - evaStage);
+    const hitChance = (moveAcc / 100) * accMult / evaMult;
+    if (Math.random() > hitChance) {
+      logs.push(log('But it missed!', 'info'));
+      return { atk, def };
+    }
+  }
+
   if (move.damageClass === 'status') {
     // Weather-setting moves
     const newWeather = WEATHER_MOVES[move.name];
     if (newWeather !== undefined) {
       logs.push(log(WEATHER_START[newWeather], 'status'));
       return { atk, def, newWeather };
+    }
+
+    // Healing moves (Recover, Roost, Soft-Boiled, Slack Off, Moonlight, etc.)
+    if (move.category === 'heal') {
+      if (move.name === 'rest') {
+        // Rest: heal to full + self-inflict sleep
+        if (atk.status === 'sleep') {
+          logs.push(log('But it failed!', 'info'));
+        } else {
+          atk = { ...atk, currentHp: atk.stats.hp, status: 'sleep', sleepTurns: 2 };
+          logs.push(log(`${atk.displayName} restored its HP and fell into a deep slumber!`, 'status'));
+        }
+      } else {
+        const restored = Math.max(1, Math.floor(atk.stats.hp / 2));
+        if (atk.currentHp === atk.stats.hp) {
+          logs.push(log(`But ${atk.displayName}'s HP is full!`, 'info'));
+        } else {
+          atk = { ...atk, currentHp: Math.min(atk.stats.hp, atk.currentHp + restored) };
+          logs.push(log(`${atk.displayName} restored HP!`, 'status'));
+        }
+      }
+      return { atk, def };
     }
 
     const statChanges = move.statChanges ?? [];

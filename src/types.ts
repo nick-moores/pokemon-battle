@@ -19,6 +19,7 @@ export interface Move {
   displayName: string;
   type: string;
   power: number | null;
+  accuracy: number | null;  // null = always hits (Swift, Aerial Ace, etc.)
   pp: number;
   damageClass: 'physical' | 'special' | 'status';
   category: string;
