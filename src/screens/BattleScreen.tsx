@@ -51,27 +51,34 @@ function PokemonSide({
         </div>
         {(() => {
           const stages = pokemon.stages ?? { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0 };
-          const stats: [keyof typeof stages, string][] = [
+          const statKeys: [keyof typeof stages & keyof typeof pokemon.stats, string][] = [
             ['attack', 'ATK'], ['defense', 'DEF'], ['specialAttack', 'SpA'],
             ['specialDefense', 'SpD'], ['speed', 'SPD'],
           ];
           return (
             <div className={`flex gap-1 mb-2 ${isTop ? 'justify-end' : 'justify-start'}`}>
-              {stats.map(([k, label]) => {
-                const v = stages[k] as number;
-                const arrows = v > 0 ? '▲'.repeat(Math.min(v, 3)) : v < 0 ? '▼'.repeat(Math.min(-v, 3)) : '';
+              {statKeys.map(([k, label]) => {
+                const stage = stages[k] as number;
+                const base = pokemon.stats[k] as number;
+                const effective = getStagedStat(base, stage);
+                const arrows = stage > 0 ? '▲'.repeat(Math.min(stage, 3)) : stage < 0 ? '▼'.repeat(Math.min(-stage, 3)) : '';
                 return (
                   <div
                     key={k}
                     className={`flex flex-col items-center rounded px-1.5 py-0.5 min-w-[32px]
-                      ${v > 0 ? 'bg-green-700/60 ring-1 ring-green-500' : v < 0 ? 'bg-red-800/60 ring-1 ring-red-500' : 'bg-gray-800'}`}
+                      ${stage > 0 ? 'bg-green-700/60 ring-1 ring-green-500' : stage < 0 ? 'bg-red-800/60 ring-1 ring-red-500' : 'bg-gray-800'}`}
                   >
-                    <span className={`text-[9px] font-bold leading-none ${v > 0 ? 'text-green-300' : v < 0 ? 'text-red-300' : 'text-gray-500'}`}>
+                    <span className={`text-[9px] font-bold leading-none ${stage > 0 ? 'text-green-300' : stage < 0 ? 'text-red-300' : 'text-gray-500'}`}>
                       {label}
                     </span>
-                    <span className={`text-[10px] font-black leading-tight ${v > 0 ? 'text-green-300' : v < 0 ? 'text-red-400' : 'text-gray-600'}`}>
-                      {v === 0 ? '—' : arrows || (v > 0 ? `+${v}` : `${v}`)}
+                    <span className={`text-[11px] font-black leading-tight ${stage > 0 ? 'text-green-200' : stage < 0 ? 'text-red-200' : 'text-gray-300'}`}>
+                      {effective}
                     </span>
+                    {stage !== 0 && (
+                      <span className={`text-[9px] leading-none ${stage > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {arrows || (stage > 0 ? `+${stage}` : `${stage}`)}
+                      </span>
+                    )}
                   </div>
                 );
               })}
