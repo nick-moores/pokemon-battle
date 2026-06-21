@@ -20,6 +20,7 @@ export interface Move {
   type: string;
   power: number | null;
   accuracy: number | null;  // null = always hits (Swift, Aerial Ace, etc.)
+  critRate: number;         // PokeAPI crit_rate stage: 0=6.25%, 1=12.5%, 2=50%, 3+=100%
   pp: number;
   damageClass: 'physical' | 'special' | 'status';
   category: string;

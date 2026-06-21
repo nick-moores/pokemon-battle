@@ -65,7 +65,9 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
     ? (defender.stages?.specialDefense ?? 0)
     : (defender.stages?.defense ?? 0);
 
-  const isCrit = Math.random() < 0.0625;
+  const critStage = (move as any).critRate ?? 0;
+  const critChance = critStage <= 0 ? 1/16 : critStage === 1 ? 1/8 : critStage === 2 ? 1/2 : 1;
+  const isCrit = Math.random() < critChance;
   const effectiveAtkStage = isCrit ? Math.max(0, atkStage) : atkStage;
   const effectiveDefStage = isCrit ? Math.min(0, defStage) : defStage;
 
