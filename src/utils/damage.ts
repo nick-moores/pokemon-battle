@@ -30,10 +30,11 @@ export function getStagedStat(baseStat: number, stage: number): number {
   return Math.max(1, Math.floor(baseStat * getStageMultiplier(stage)));
 }
 
-export function getStagedSpeed(pokemon: BattlePokemon, weather: WeatherType | null = null): number {
+export function getStagedSpeed(pokemon: BattlePokemon, weather: WeatherType | null = null, tailwind = false): number {
   let base = pokemon.status === 'paralysis'
     ? Math.floor(pokemon.stats.speed * 0.5)
     : pokemon.stats.speed;
+  if (tailwind) base *= 2;
   if (weather === 'rain' && pokemon.ability === 'swift-swim') base *= 2;
   if (weather === 'sunny' && pokemon.ability === 'chlorophyll') base *= 2;
   if (weather === 'sandstorm' && pokemon.ability === 'sand-rush') base *= 2;

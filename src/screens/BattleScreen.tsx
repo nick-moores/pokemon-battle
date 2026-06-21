@@ -8,6 +8,7 @@ import { MoveButton } from '../components/MoveButton';
 import { TypeBadge } from '../components/TypeBadge';
 import { BattleLog, BattleTextBox } from '../components/BattleLog';
 import { getDamageBreakdown, DamageBreakdown, getStagedStat } from '../utils/damage';
+import { TYPE_COLORS } from '../data/typeColors';
 
 function PokemonSide({
   team,
@@ -53,6 +54,11 @@ function PokemonSide({
         </div>
         <div className={`flex gap-1 mb-1 ${isTop ? 'justify-end' : 'justify-start'}`}>
           {pokemon.types.map(t => <TypeBadge key={t} type={t} small />)}
+          {(team.tailwindTurns ?? 0) > 0 && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-900/70 text-cyan-300 ring-1 ring-cyan-600">
+              💨 {team.tailwindTurns}t
+            </span>
+          )}
         </div>
         {(() => {
           const stages = pokemon.stages ?? { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0 };
@@ -65,7 +71,10 @@ function PokemonSide({
               {statKeys.map(([k, label]) => {
                 const stage = stages[k] as number;
                 const base = pokemon.stats[k] as number;
-                const effective = getStagedStat(base, stage);
+                const tailwindActive = k === 'speed' && (team.tailwindTurns ?? 0) > 0;
+                const effective = tailwindActive
+                  ? Math.floor(getStagedStat(base, stage) * 2)
+                  : getStagedStat(base, stage);
                 const arrows = stage > 0 ? '▲'.repeat(Math.min(stage, 3)) : stage < 0 ? '▼'.repeat(Math.min(-stage, 3)) : '';
                 return (
                   <div
@@ -111,16 +120,38 @@ function PokemonSide({
   );
 }
 
-function SwitchPanel({ team, onSwitch }: { team: BattleTeam; onSwitch: (i: number) => void }) {
+function SwitchPanel({
+  team, onSwitch, onCancel,
+}: {
+  team: BattleTeam;
+  onSwitch: (i: number) => void;
+  onCancel?: () => void;
+}) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const activeFainted = team.pokemon[team.activeIndex]?.isFainted;
+  const hoveredPokemon = hoveredIdx !== null ? team.pokemon[hoveredIdx] : null;
+
   return (
     <div className="bg-gray-900 rounded-2xl p-4">
-      <h3 className="font-bold text-white mb-3">{team.name} — Choose a Pokemon</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-bold text-white">{team.name} — Choose a Pokémon</h3>
+        {!activeFainted && onCancel && (
+          <button
+            onClick={onCancel}
+            className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white"
+          >
+            ← Back
+          </button>
+        )}
+      </div>
       <div className="grid grid-cols-3 gap-2">
         {team.pokemon.map((p, i) => (
           <button
             key={p.id}
             onClick={() => !p.isFainted && i !== team.activeIndex && onSwitch(i)}
             disabled={p.isFainted || i === team.activeIndex}
+            onMouseEnter={() => setHoveredIdx(i)}
+            onMouseLeave={() => setHoveredIdx(null)}
             className={`flex flex-col items-center p-2 rounded-xl border-2 transition-all
               ${p.isFainted ? 'opacity-30 border-gray-700 cursor-not-allowed'
                 : i === team.activeIndex ? 'border-blue-400 bg-blue-900/30 cursor-not-allowed'
@@ -133,6 +164,31 @@ function SwitchPanel({ team, onSwitch }: { team: BattleTeam; onSwitch: (i: numbe
           </button>
         ))}
       </div>
+      {hoveredPokemon && (
+        <div className="mt-3 bg-gray-800 rounded-xl p-2.5">
+          <div className="text-[10px] font-bold text-gray-400 uppercase mb-1.5">{hoveredPokemon.displayName}'s moves</div>
+          {hoveredPokemon.selectedMoves.length === 0 ? (
+            <div className="text-xs text-gray-500">No moves assigned</div>
+          ) : (
+            <div className="grid grid-cols-2 gap-1">
+              {hoveredPokemon.selectedMoves.map((m, mi) => {
+                const colors = TYPE_COLORS[m.type.toLowerCase()] ?? { bg: '#555', text: '#fff' };
+                const pp = (hoveredPokemon.currentPP?.[mi] ?? m.pp);
+                return (
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between rounded px-2 py-1 text-[11px] font-medium"
+                    style={{ backgroundColor: colors.bg + 'bb', color: colors.text }}
+                  >
+                    <span>{m.displayName}</span>
+                    <span className="opacity-70 text-[9px] ml-1">{pp}/{m.pp}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -435,6 +491,9 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
           <SwitchPanel
             team={isSwitchTeam1 ? team1 : team2}
             onSwitch={(i) => switchPokemon(isSwitchTeam1 ? 1 : 2, i)}
+            onCancel={() => useBattleStore.setState(s => ({
+              battle: s.battle ? { ...s.battle, phase: isSwitchTeam1 ? 'team1-move' : 'team2-move' } : null,
+            }))}
           />
         )}
 

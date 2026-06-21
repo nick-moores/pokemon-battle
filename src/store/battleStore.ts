@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import {
   BattleState, BattleTeam, BattlePokemon, Move, Team,
-  StatusCondition, BattleRecord, BattleLogEntry, WeatherType, PokemonStats
+  StatusCondition, BattleRecord, BattleLogEntry, WeatherType, PokemonStats, FutureSightState
 } from '../types';
 import { calculateDamage, getStatusTickDamage, getStagedSpeed, ZERO_STAGES } from '../utils/damage';
 import { Stages } from '../types';
@@ -126,6 +126,8 @@ function initBattleTeam(team: Team): BattleTeam {
     name: team.name,
     pokemon: team.pokemon.map(initBattlePokemon),
     activeIndex: 0,
+    tailwindTurns: 0,
+    futureSight: null,
   };
 }
 
@@ -256,7 +258,7 @@ function executeMove(
   attackerName: string,
   logs: BattleLogEntry[],
   weather: WeatherType | null,
-): { atk: BattlePokemon; def: BattlePokemon; newWeather?: WeatherType } {
+): { atk: BattlePokemon; def: BattlePokemon; newWeather?: WeatherType; setTailwind?: boolean; futureSight?: FutureSightState } {
   logs.push(log(`${attackerName} used ${move.displayName}!`, 'move'));
 
   let atk = attacker;
@@ -293,6 +295,18 @@ function executeMove(
       atk = { ...atk, currentHp: atk.currentHp - subCost, substituteHp: subCost };
       logs.push(log(`${atk.displayName} put in a substitute!`, 'status'));
       return { atk, def };
+    }
+
+    // Tailwind: doubles Speed for attacker's team for 3 turns
+    if (move.name === 'tailwind') {
+      logs.push(log(`${atk.displayName} whipped up a Tailwind!`, 'status'));
+      return { atk, def, setTailwind: true };
+    }
+
+    // Future Sight / Doom Desire: delayed attack that fires after 2 turns
+    if (move.name === 'future-sight' || move.name === 'doom-desire') {
+      logs.push(log(`${atk.displayName} foresaw an attack!`, 'status'));
+      return { atk, def, futureSight: { turnsLeft: 3, attackerDisplayName: atk.displayName, move } };
     }
 
     // Weather-setting moves
@@ -557,8 +571,8 @@ export const useBattleStore = create<BattleStore>()(
         const t1Active = t1.pokemon[t1.activeIndex];
         const t2Active = t2.pokemon[t2.activeIndex];
 
-        const t1Speed = getStagedSpeed(t1Active, currentWeather);
-        const t2Speed = getStagedSpeed(t2Active, currentWeather);
+        const t1Speed = getStagedSpeed(t1Active, currentWeather, t1.tailwindTurns > 0);
+        const t2Speed = getStagedSpeed(t2Active, currentWeather, t2.tailwindTurns > 0);
         const t1First = t1Speed > t2Speed || (t1Speed === t2Speed && Math.random() < 0.5);
 
         const executeTurn = (
@@ -629,6 +643,12 @@ export const useBattleStore = create<BattleStore>()(
           if (result.newWeather !== undefined) {
             currentWeather = result.newWeather;
             currentWeatherTurnsLeft = 5;
+          }
+          if (result.setTailwind) {
+            atk = { ...atk, tailwindTurns: 3 };
+          }
+          if (result.futureSight) {
+            atk = { ...atk, futureSight: result.futureSight };
           }
           const updatedAtkArr = [...atk.pokemon];
           updatedAtkArr[atkIdx] = result.atk;
@@ -703,6 +723,61 @@ export const useBattleStore = create<BattleStore>()(
         };
         t1 = applyEndOfTurnAbilities(t1);
         t2 = applyEndOfTurnAbilities(t2);
+
+        // Tailwind countdown
+        if (t1.tailwindTurns > 0) {
+          t1 = { ...t1, tailwindTurns: t1.tailwindTurns - 1 };
+          if (t1.tailwindTurns === 0) logs.push(log(`${t1.name}'s Tailwind faded!`, 'status'));
+        }
+        if (t2.tailwindTurns > 0) {
+          t2 = { ...t2, tailwindTurns: t2.tailwindTurns - 1 };
+          if (t2.tailwindTurns === 0) logs.push(log(`${t2.name}'s Tailwind faded!`, 'status'));
+        }
+
+        // Future Sight / Doom Desire: decrement and fire when turnsLeft hits 0
+        const applyFutureSight = (
+          attackingTeam: BattleTeam,
+          defendingTeam: BattleTeam,
+        ): { atk: BattleTeam; def: BattleTeam } => {
+          if (!attackingTeam.futureSight) return { atk: attackingTeam, def: defendingTeam };
+          const fs = attackingTeam.futureSight;
+          const newTurns = fs.turnsLeft - 1;
+          if (newTurns > 0) {
+            return { atk: { ...attackingTeam, futureSight: { ...fs, turnsLeft: newTurns } }, def: defendingTeam };
+          }
+          // Fire!
+          const attacker = attackingTeam.pokemon[attackingTeam.activeIndex];
+          const defIdx2 = defendingTeam.activeIndex;
+          const defender2 = defendingTeam.pokemon[defIdx2];
+          attackingTeam = { ...attackingTeam, futureSight: null };
+          if (defender2.isFainted) return { atk: attackingTeam, def: defendingTeam };
+
+          logs.push(log(`${fs.attackerDisplayName}'s ${fs.move.displayName} attack fell!`, 'move'));
+          const fsResult = calculateDamage(attacker, defender2, fs.move, currentWeather);
+          const calcRecord: BattleLogEntry['damageCalc'] = {
+            moveName: fs.move.displayName, attackerName: fs.attackerDisplayName,
+            power: fs.move.power ?? 120, category: fs.move.damageClass,
+            atkStat: fsResult.atkStatEffective, defStat: fsResult.defStatEffective,
+            atkStage: fsResult.atkStage, defStage: fsResult.defStage,
+            stabMult: fsResult.stabMult, effectiveness: fsResult.effectiveness,
+            weatherMult: fsResult.weatherMult, abilityMult: fsResult.abilityMult,
+            abilityNote: fsResult.abilityNote, isCrit: fsResult.isCrit,
+            randomFactor: fsResult.randomFactor, finalDamage: fsResult.damage,
+            defenderMaxHp: defender2.stats.hp,
+          };
+          // Future Sight hits through Substitute
+          const struck = applyDamage(defender2, fsResult.damage);
+          logs.push(log(`${defender2.displayName} took ${fsResult.damage} damage!`, 'damage', calcRecord));
+          if (struck.isFainted) logs.push(log(`${defender2.displayName} fainted!`, 'faint'));
+          const defPokemon2 = [...defendingTeam.pokemon];
+          defPokemon2[defIdx2] = struck;
+          return { atk: attackingTeam, def: { ...defendingTeam, pokemon: defPokemon2 } };
+        };
+
+        const fs1 = applyFutureSight(t1, t2);
+        t1 = fs1.atk; t2 = fs1.def;
+        const fs2 = applyFutureSight(t2, t1);
+        t2 = fs2.atk; t1 = fs2.def;
 
         const t1AllFainted = t1.pokemon.every(p => p.isFainted);
         const t2AllFainted = t2.pokemon.every(p => p.isFainted);

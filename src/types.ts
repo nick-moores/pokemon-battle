@@ -90,11 +90,19 @@ export interface BattlePokemon extends TeamPokemon {
   substituteHp: number | null;  // null = no sub; number = sub's remaining HP
 }
 
+export interface FutureSightState {
+  turnsLeft: number;           // fires when this reaches 0 at end-of-turn
+  attackerDisplayName: string;
+  move: Move;                  // the stored move (type/power used when it lands)
+}
+
 export interface BattleTeam {
   teamId: string;
   name: string;
   pokemon: BattlePokemon[];
   activeIndex: number;
+  tailwindTurns: number;           // turns remaining (0 = not active)
+  futureSight: FutureSightState | null;
 }
 
 export type TurnPhase =
