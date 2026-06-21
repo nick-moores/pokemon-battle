@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTeamStore } from '../store/teamStore';
 import { Team, TeamPokemon, Move, BasePokemon } from '../types';
-import { fetchPokemon, fetchMove, usePokemonSearch } from '../hooks/usePokeAPI';
+import { fetchPokemon, fetchMove, usePokemonSearch, formatName } from '../hooks/usePokeAPI';
 import { TypeBadge } from '../components/TypeBadge';
 
 function formatAbilityName(name: string): string {
@@ -277,7 +277,7 @@ function EditTeam({ team, onBack }: { team: Team; onBack: () => void }) {
                   onClick={() => { selectSuggestion(name); setQuery(name); }}
                   className="w-full text-left px-4 py-2 hover:bg-gray-600 text-white text-sm capitalize transition-colors"
                 >
-                  {name.replace(/-/g, ' ')}
+                  {formatName(name)}
                 </button>
               ))}
             </div>

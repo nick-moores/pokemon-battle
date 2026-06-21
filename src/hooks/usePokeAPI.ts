@@ -12,15 +12,32 @@ const REGION_ADJECTIVES: Record<string, string> = {
   paldea: 'Paldean',
 };
 
-function formatName(name: string): string {
+export function formatName(name: string): string {
   const parts = name.split('-');
-  // Check if the last part (or last two parts for paldea sub-forms) is a region
   const lastPart = parts[parts.length - 1];
+
+  // Regional forms: *-alola, *-galar, *-hisui, *-paldea → "Galarian Zapdos"
   const adjective = REGION_ADJECTIVES[lastPart];
   if (adjective) {
     const baseName = parts.slice(0, -1).join(' ').replace(/\b\w/g, c => c.toUpperCase());
     return `${adjective} ${baseName}`;
   }
+
+  // Mega forms: *-mega or *-mega-x/y → "Mega Charizard X"
+  const megaIdx = parts.indexOf('mega');
+  if (megaIdx >= 0) {
+    const base = parts.slice(0, megaIdx).join(' ').replace(/\b\w/g, c => c.toUpperCase());
+    const variant = parts.slice(megaIdx + 1).map(p => p.toUpperCase()).join(' ');
+    return variant ? `Mega ${base} ${variant}` : `Mega ${base}`;
+  }
+
+  // Primal forms: *-primal → "Primal Groudon"
+  const primalIdx = parts.indexOf('primal');
+  if (primalIdx >= 0) {
+    const base = parts.filter((_, i) => i !== primalIdx).join(' ').replace(/\b\w/g, c => c.toUpperCase());
+    return `Primal ${base}`;
+  }
+
   return name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
@@ -31,12 +48,15 @@ const REGION_MAP: Record<string, string> = {
   paldean: 'paldea', paldea: 'paldea',
 };
 
+const MEGA_VARIANTS = new Set(['x', 'y']);
+
 function queryVariants(raw: string): string[] {
   const base = raw.toLowerCase().trim();
   const hyphenated = base.replace(/\s+/g, '-');
   const variants = [hyphenated];
+  const words = base.split(/\s+/);
 
-  // "hisuian zoroark" → "zoroark-hisui"
+  // "hisuian zoroark" / "galar zapdos" → "zoroark-hisui" / "zapdos-galar"
   for (const [prefix, suffix] of Object.entries(REGION_MAP)) {
     if (base.startsWith(prefix + ' ')) {
       const pokemonPart = base.slice(prefix.length + 1).trim().replace(/\s+/g, '-');
@@ -44,12 +64,25 @@ function queryVariants(raw: string): string[] {
     }
   }
 
-  // "zoroark hisui" → "zoroark-hisui" (already covered by hyphenated, but also try reversed)
-  const words = base.split(/\s+/);
+  // "zoroark galar" → "zoroark-galar" (already hyphenated), and reverse
   if (words.length === 2) {
     const [a, b] = words;
     if (REGION_MAP[b]) variants.push(`${a}-${REGION_MAP[b]}`);
     if (REGION_MAP[a]) variants.push(`${b}-${REGION_MAP[a]}`);
+  }
+
+  // "mega charizard" / "charizard mega" / "mega charizard x" → "charizard-mega" / "charizard-mega-x"
+  if (words.includes('mega')) {
+    const last = words[words.length - 1];
+    const variant = words.length >= 3 && MEGA_VARIANTS.has(last) ? last : null;
+    const basePart = words.filter(w => w !== 'mega' && w !== variant).join('-');
+    if (basePart) variants.unshift(variant ? `${basePart}-mega-${variant}` : `${basePart}-mega`);
+  }
+
+  // "primal groudon" / "groudon primal" → "groudon-primal"
+  if (words.includes('primal')) {
+    const basePart = words.filter(w => w !== 'primal').join('-');
+    if (basePart) variants.unshift(`${basePart}-primal`);
   }
 
   return [...new Set(variants)];
@@ -183,22 +216,40 @@ export async function loadAllPokemonNames(): Promise<string[]> {
 export function matchNames(names: string[], query: string, limit = 10): string[] {
   const q = query.toLowerCase().trim();
   if (q.length < 2) return [];
+  const words = q.split(/\s+/);
 
-  // Build patterns to test each API name against
   const patterns: string[] = [q.replace(/\s+/g, '-')];
 
-  // "hisuian" or "hisuian zoro" → also search the hisui suffix
+  // "galarian zapdos" / "galar zapdos" / "zapdos galar" → "zapdos-galar"
   for (const [adj, suffix] of Object.entries(REGION_MAP)) {
     if (q === adj || q.startsWith(adj + ' ')) {
       const rest = q.slice(adj.length).trim().replace(/\s+/g, '-');
       patterns.push(rest ? `${rest}-${suffix}` : suffix);
     }
+    // reverse: "zapdos galar" — last word is the region key
+    if (words.length >= 2 && words[words.length - 1] === adj) {
+      const base = words.slice(0, -1).join('-');
+      patterns.push(`${base}-${suffix}`);
+    }
+  }
+
+  // "mega charizard" / "charizard mega" / "mega charizard x" → "charizard-mega" prefix
+  if (words.includes('mega')) {
+    const last = words[words.length - 1];
+    const variant = words.length >= 3 && MEGA_VARIANTS.has(last) ? last : null;
+    const basePart = words.filter(w => w !== 'mega' && w !== variant).join('-');
+    if (basePart) patterns.push(variant ? `${basePart}-mega-${variant}` : `${basePart}-mega`);
+  }
+
+  // "primal groudon" / "groudon primal" → "groudon-primal"
+  if (words.includes('primal')) {
+    const basePart = words.filter(w => w !== 'primal').join('-');
+    if (basePart) patterns.push(`${basePart}-primal`);
   }
 
   return names
     .filter(name => patterns.some(p => name.startsWith(p) || name.includes(p)))
     .sort((a, b) => {
-      // prefer names that start with the first pattern
       const p = patterns[0];
       return (b.startsWith(p) ? 1 : 0) - (a.startsWith(p) ? 1 : 0);
     })
