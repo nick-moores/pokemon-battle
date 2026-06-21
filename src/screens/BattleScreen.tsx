@@ -35,6 +35,11 @@ function PokemonSide({
           className={`w-28 h-28 object-contain transition-opacity duration-300 ${fainted ? 'opacity-20 grayscale' : ''} ${flashing ? 'pokemon-flash' : ''}`}
           style={{ imageRendering: 'pixelated' }}
         />
+        {pokemon.substituteHp !== null && !fainted && (
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 bg-purple-900/90 border border-purple-500 rounded-full px-2 py-0.5 text-[10px] font-bold text-purple-200 whitespace-nowrap">
+            🛡️ {pokemon.substituteHp} HP
+          </div>
+        )}
         {fainted && (
           <div className="absolute inset-0 flex items-center justify-center text-red-400 font-bold text-xs">
             FAINTED

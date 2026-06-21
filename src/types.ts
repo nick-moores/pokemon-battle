@@ -86,6 +86,7 @@ export interface BattlePokemon extends TeamPokemon {
   chargingMove: Move | null;
   isInvulnerable: boolean;
   currentPP: number[];  // parallel to selectedMoves
+  substituteHp: number | null;  // null = no sub; number = sub's remaining HP
 }
 
 export interface BattleTeam {

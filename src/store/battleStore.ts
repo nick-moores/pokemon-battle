@@ -87,6 +87,7 @@ function initBattlePokemon(p: Team['pokemon'][0]): BattlePokemon {
     chargingMove: null,
     isInvulnerable: false,
     currentPP: p.selectedMoves.map(m => m.pp),
+    substituteHp: null,
   };
 }
 
@@ -278,6 +279,22 @@ function executeMove(
   }
 
   if (move.damageClass === 'status') {
+    // Substitute
+    if (move.name === 'substitute') {
+      if (atk.substituteHp !== null) {
+        logs.push(log(`${atk.displayName} already has a substitute!`, 'info'));
+        return { atk, def };
+      }
+      const subCost = Math.floor(atk.stats.hp / 4);
+      if (atk.currentHp <= subCost) {
+        logs.push(log(`${atk.displayName} doesn't have enough HP to make a substitute!`, 'info'));
+        return { atk, def };
+      }
+      atk = { ...atk, currentHp: atk.currentHp - subCost, substituteHp: subCost };
+      logs.push(log(`${atk.displayName} put in a substitute!`, 'status'));
+      return { atk, def };
+    }
+
     // Weather-setting moves
     const newWeather = WEATHER_MOVES[move.name];
     if (newWeather !== undefined) {
@@ -313,28 +330,40 @@ function executeMove(
 
     const ailment = move.ailment;
     if (ailment === 'burn' || ailment === 'poison' || ailment === 'paralysis' || ailment === 'sleep' || ailment === 'freeze' || ailment === 'badly-poisoned') {
-      const withStatus = applyStatus(def, ailment as StatusCondition);
-      if (withStatus.status !== def.status) {
-        let msg = '';
-        if (ailment === 'burn') msg = `${def.displayName} was burned!`;
-        else if (ailment === 'poison' || ailment === 'badly-poisoned') msg = `${def.displayName} was poisoned!`;
-        else if (ailment === 'paralysis') msg = `${def.displayName} was paralyzed!`;
-        else if (ailment === 'sleep') msg = `${def.displayName} fell asleep!`;
-        else if (ailment === 'freeze') msg = `${def.displayName} was frozen!`;
-        logs.push(log(msg, 'status'));
-        def = ailment === 'sleep' ? { ...withStatus, sleepTurns: Math.floor(Math.random() * 3) + 1 } : withStatus;
+      if (def.substituteHp !== null) {
+        logs.push(log(`${def.displayName}'s substitute blocked the move!`, 'info'));
       } else {
-        logs.push(log(`But it failed!`, 'info'));
+        const withStatus = applyStatus(def, ailment as StatusCondition);
+        if (withStatus.status !== def.status) {
+          let msg = '';
+          if (ailment === 'burn') msg = `${def.displayName} was burned!`;
+          else if (ailment === 'poison' || ailment === 'badly-poisoned') msg = `${def.displayName} was poisoned!`;
+          else if (ailment === 'paralysis') msg = `${def.displayName} was paralyzed!`;
+          else if (ailment === 'sleep') msg = `${def.displayName} fell asleep!`;
+          else if (ailment === 'freeze') msg = `${def.displayName} was frozen!`;
+          logs.push(log(msg, 'status'));
+          def = ailment === 'sleep' ? { ...withStatus, sleepTurns: Math.floor(Math.random() * 3) + 1 } : withStatus;
+        } else {
+          logs.push(log(`But it failed!`, 'info'));
+        }
       }
     } else if (ailment === 'confusion') {
-      if (def.status === 'none' || def.status === 'confusion') {
+      if (def.substituteHp !== null) {
+        logs.push(log(`${def.displayName}'s substitute blocked the move!`, 'info'));
+      } else if (def.status === 'none' || def.status === 'confusion') {
         logs.push(log(`${def.displayName} became confused!`, 'status'));
         def = { ...def, status: 'confusion', confusionTurns: Math.floor(Math.random() * 3) + 2 };
       }
     }
 
     if (selfChanges.length) atk = applyStatChanges(atk, selfChanges, logs);
-    if (oppChanges.length) def = applyStatChanges(def, oppChanges, logs);
+    if (oppChanges.length) {
+      if (def.substituteHp !== null) {
+        logs.push(log(`${def.displayName}'s substitute blocked the stat change!`, 'info'));
+      } else {
+        def = applyStatChanges(def, oppChanges, logs);
+      }
+    }
     return { atk, def };
   }
 
@@ -379,8 +408,7 @@ function executeMove(
   if (effectText) logs.push(log(effectText, 'effectiveness'));
   if (isCrit) logs.push(log('A critical hit!', 'info'));
 
-  def = applyDamage(def, damage);
-  logs.push(log(`${def.displayName} took ${damage} damage!`, 'damage', {
+  const calcRecord: BattleLogEntry['damageCalc'] = {
     moveName: move.displayName,
     attackerName: atk.displayName,
     power: move.power ?? 0,
@@ -398,7 +426,27 @@ function executeMove(
     randomFactor: calcResult.randomFactor,
     finalDamage: damage,
     defenderMaxHp: def.stats.hp,
-  }));
+  };
+
+  // Substitute: damage hits the sub instead of the Pokemon
+  if (def.substituteHp !== null) {
+    const subBefore = def.substituteHp;
+    if (damage >= subBefore) {
+      def = { ...def, substituteHp: null };
+      logs.push(log(`The substitute took ${damage} damage!`, 'damage', calcRecord));
+      logs.push(log(`${def.displayName}'s substitute broke!`, 'status'));
+    } else {
+      def = { ...def, substituteHp: subBefore - damage };
+      logs.push(log(`The substitute took ${damage} damage! (${def.substituteHp} HP left)`, 'damage', calcRecord));
+    }
+    // Sub absorbs secondary effects — no ailment chance, no contact triggers
+    const selfStatChanges = (move.statChanges ?? []).filter(sc => sc.target === 'user');
+    if (selfStatChanges.length) atk = applyStatChanges(atk, selfStatChanges, logs);
+    return { atk, def };
+  }
+
+  def = applyDamage(def, damage);
+  logs.push(log(`${def.displayName} took ${damage} damage!`, 'damage', calcRecord));
   if (def.isFainted) logs.push(log(`${def.displayName} fainted!`, 'faint'));
 
   if (!def.isFainted && move.ailmentChance > 0 && Math.random() * 100 < move.ailmentChance) {
@@ -727,7 +775,7 @@ export const useBattleStore = create<BattleStore>()(
           const outIdx1 = battle.team1.activeIndex;
           const resetPokemon = battle.team1.pokemon.map((p, i) => {
             if (i === pokemonIndex) return { ...p, stages: { ...ZERO_STAGES } };
-            if (i === outIdx1) return { ...p, chargingMove: null, isInvulnerable: false };
+            if (i === outIdx1) return { ...p, chargingMove: null, isInvulnerable: false, substituteHp: null };
             return p;
           });
           let t1 = { ...battle.team1, activeIndex: pokemonIndex, pokemon: resetPokemon };
@@ -748,7 +796,7 @@ export const useBattleStore = create<BattleStore>()(
           const outIdx2 = battle.team2.activeIndex;
           const resetPokemon = battle.team2.pokemon.map((p, i) => {
             if (i === pokemonIndex) return { ...p, stages: { ...ZERO_STAGES } };
-            if (i === outIdx2) return { ...p, chargingMove: null, isInvulnerable: false };
+            if (i === outIdx2) return { ...p, chargingMove: null, isInvulnerable: false, substituteHp: null };
             return p;
           });
           let t2 = { ...battle.team2, activeIndex: pokemonIndex, pokemon: resetPokemon };
