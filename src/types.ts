@@ -65,6 +65,7 @@ export interface Team {
 
 export type WeatherType = 'sunny' | 'rain' | 'sandstorm' | 'hail';
 
+// Non-volatile (only one at a time, persists through switches)
 export type StatusCondition =
   | 'none'
   | 'burn'
@@ -72,8 +73,8 @@ export type StatusCondition =
   | 'badly-poisoned'
   | 'paralysis'
   | 'sleep'
-  | 'freeze'
-  | 'confusion';
+  | 'freeze';
+// Confusion is volatile and tracked separately via confusionTurns > 0
 
 export interface BattlePokemon extends TeamPokemon {
   currentHp: number;
@@ -88,6 +89,8 @@ export interface BattlePokemon extends TeamPokemon {
   isInvulnerable: boolean;
   currentPP: number[];  // parallel to selectedMoves
   substituteHp: number | null;  // null = no sub; number = sub's remaining HP
+  lockedMove: Move | null;      // Outrage/Thrash/Petal Dance lock-in
+  lockedTurns: number;          // additional turns remaining (0 = move ended this turn)
 }
 
 export interface FutureSightState {
@@ -110,6 +113,8 @@ export type TurnPhase =
   | 'team2-move'
   | 'switch-team1'
   | 'switch-team2'
+  | 'pivot-team1'    // team1 used a pivot move; waiting for them to choose a replacement
+  | 'pivot-team2'    // team2 used a pivot move; waiting for them to choose a replacement
   | 'game-over';
 
 export interface DamageCalcRecord {
@@ -146,6 +151,11 @@ export interface BattleState {
   turn: number;
   team1SelectedMove: Move | null;
   team2SelectedMove: Move | null;
+  team1SelectedSwitch: number | null;  // voluntary switch chosen during team1-move phase
+  // Pivot moves (U-turn, Volt Switch, Flip Turn): store the second attacker's pending move
+  // while the pivot user's team picks their replacement.
+  pivotPendingMove: Move | null;
+  pivotPendingTeam: 1 | 2 | null;
   log: BattleLogEntry[];
   winner: 'team1' | 'team2' | null;
   weather: WeatherType | null;

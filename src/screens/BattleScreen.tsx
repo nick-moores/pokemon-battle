@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useBattleStore } from '../store/battleStore';
-import { battleMusic } from '../utils/battleMusic';
+import { battleMusic, TRACKS } from '../utils/battleMusic';
 import { BattlePokemon, BattleTeam, Move, WeatherType } from '../types';
 import { HPBar } from '../components/HPBar';
 import { StatusBadge } from '../components/StatusBadge';
@@ -51,6 +51,11 @@ function PokemonSide({
         <div className={`flex items-center gap-2 mb-1 ${isTop ? 'justify-end' : 'justify-start'}`}>
           <span className="font-bold text-white text-lg">{pokemon.displayName}</span>
           <StatusBadge status={pokemon.status} />
+          {(pokemon.confusionTurns ?? 0) > 0 && (
+            <span className="inline-block text-[9px] font-bold px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: '#FF88AA' }}>
+              CNF
+            </span>
+          )}
         </div>
         <div className={`flex gap-1 mb-1 ${isTop ? 'justify-end' : 'justify-start'}`}>
           {pokemon.types.map(t => <TypeBadge key={t} type={t} small />)}
@@ -72,25 +77,28 @@ function PokemonSide({
                 const stage = stages[k] as number;
                 const base = pokemon.stats[k] as number;
                 const tailwindActive = k === 'speed' && (team.tailwindTurns ?? 0) > 0;
-                const effective = tailwindActive
-                  ? Math.floor(getStagedStat(base, stage) * 2)
-                  : getStagedStat(base, stage);
+                const burnPenalty = k === 'attack' && pokemon.status === 'burn' && pokemon.ability !== 'guts';
+                const paralysisPenalty = k === 'speed' && pokemon.status === 'paralysis';
+                let effective = getStagedStat(base, stage);
+                if (tailwindActive) effective = Math.floor(effective * 2);
+                if (burnPenalty || paralysisPenalty) effective = Math.floor(effective * 0.5);
+                const statusPenalty = burnPenalty || paralysisPenalty;
                 const arrows = stage > 0 ? '▲'.repeat(Math.min(stage, 3)) : stage < 0 ? '▼'.repeat(Math.min(-stage, 3)) : '';
                 return (
                   <div
                     key={k}
                     className={`flex flex-col items-center rounded px-1.5 py-0.5 min-w-[32px]
-                      ${stage > 0 ? 'bg-green-700/60 ring-1 ring-green-500' : stage < 0 ? 'bg-red-800/60 ring-1 ring-red-500' : 'bg-gray-800'}`}
+                      ${stage > 0 ? 'bg-green-700/60 ring-1 ring-green-500' : stage < 0 ? 'bg-red-800/60 ring-1 ring-red-500' : statusPenalty ? 'bg-orange-900/50 ring-1 ring-orange-700' : tailwindActive ? 'bg-cyan-900/50 ring-1 ring-cyan-600' : 'bg-gray-800'}`}
                   >
-                    <span className={`text-[9px] font-bold leading-none ${stage > 0 ? 'text-green-300' : stage < 0 ? 'text-red-300' : 'text-gray-500'}`}>
+                    <span className={`text-[9px] font-bold leading-none ${stage > 0 ? 'text-green-300' : stage < 0 ? 'text-red-300' : statusPenalty ? 'text-orange-400' : tailwindActive ? 'text-cyan-300' : 'text-gray-500'}`}>
                       {label}
                     </span>
-                    <span className={`text-[11px] font-black leading-tight ${stage > 0 ? 'text-green-200' : stage < 0 ? 'text-red-200' : 'text-gray-300'}`}>
+                    <span className={`text-[11px] font-black leading-tight ${stage > 0 ? 'text-green-200' : stage < 0 ? 'text-red-200' : statusPenalty ? 'text-orange-200' : tailwindActive ? 'text-cyan-200' : 'text-gray-300'}`}>
                       {effective}
                     </span>
-                    {stage !== 0 && (
-                      <span className={`text-[9px] leading-none ${stage > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {arrows || (stage > 0 ? `+${stage}` : `${stage}`)}
+                    {(stage !== 0 || tailwindActive || statusPenalty) && (
+                      <span className={`text-[9px] leading-none ${stage > 0 ? 'text-green-400' : stage < 0 ? 'text-red-400' : statusPenalty ? 'text-orange-400' : 'text-cyan-400'}`}>
+                        {statusPenalty ? '▼½' : tailwindActive ? '×2' : (arrows || (stage > 0 ? `+${stage}` : `${stage}`))}
                       </span>
                     )}
                   </div>
@@ -338,10 +346,12 @@ interface BattleScreenProps {
 }
 
 export function BattleScreen({ onEnd }: BattleScreenProps) {
-  const { battle, selectMove, switchPokemon, clearBattle } = useBattleStore();
+  const { battle, selectMove, selectSwitch, completePivot, switchPokemon, clearBattle } = useBattleStore();
   const [muted, setMuted] = useState(false);
+  const [currentTrackId, setCurrentTrackId] = useState(() => battleMusic.track.id);
   const [hoveredMove, setHoveredMove] = useState<Move | null>(null);
   const [showStats, setShowStats] = useState(false);
+  const [showSwitchPicker, setShowSwitchPicker] = useState(false);
   const [anim, setAnim] = useState({ t1Lunge: false, t2Lunge: false, t1Flash: false, t2Flash: false });
   const prevLogLen = useRef(battle?.log.length ?? 0);
   const animTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -353,6 +363,11 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
 
   useEffect(() => {
     if (battle?.phase === 'game-over') battleMusic.stop();
+  }, [battle?.phase]);
+
+  // Reset voluntary switch picker when the phase advances (team committed their action)
+  useEffect(() => {
+    setShowSwitchPicker(false);
   }, [battle?.phase]);
 
   useEffect(() => {
@@ -426,14 +441,16 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
   const isTeam2Turn = phase === 'team2-move';
   const isSwitchTeam1 = phase === 'switch-team1';
   const isSwitchTeam2 = phase === 'switch-team2';
+  const isPivotTeam1 = phase === 'pivot-team1';
+  const isPivotTeam2 = phase === 'pivot-team2';
 
   const activeTeamName = isTeam1Turn ? team1.name
     : isTeam2Turn ? team2.name
-    : isSwitchTeam1 ? team1.name
+    : isSwitchTeam1 || isPivotTeam1 ? team1.name
     : team2.name;
 
-  const activePokemon = isTeam1Turn || isSwitchTeam1 ? t1Active : t2Active;
-  const opponentPokemon = isTeam1Turn || isSwitchTeam1 ? t2Active : t1Active;
+  const activePokemon = isTeam1Turn || isSwitchTeam1 || isPivotTeam1 ? t1Active : t2Active;
+  const opponentPokemon = isTeam1Turn || isSwitchTeam1 || isPivotTeam1 ? t2Active : t1Active;
   const activeMoves = activePokemon?.selectedMoves ?? [];
 
   return (
@@ -458,7 +475,21 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
           })()}
         </div>
         <span className="font-bold text-blue-300">{team1.name} vs {team2.name}</span>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {TRACKS.length > 1 && (
+            <select
+              value={currentTrackId}
+              onChange={e => {
+                battleMusic.setTrack(e.target.value);
+                setCurrentTrackId(e.target.value);
+              }}
+              className="text-xs bg-gray-800 text-gray-300 border border-gray-600 rounded px-1.5 py-0.5 cursor-pointer"
+            >
+              {TRACKS.map(t => (
+                <option key={t.id} value={t.id}>{t.label}</option>
+              ))}
+            </select>
+          )}
           <button onClick={toggleMute} className="text-lg" title={muted ? 'Unmute' : 'Mute'}>
             {muted ? '🔇' : '🔊'}
           </button>
@@ -497,13 +528,62 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
           />
         )}
 
+        {(isPivotTeam1 || isPivotTeam2) && (
+          <div className="space-y-2">
+            <div className="text-xs font-bold text-green-400 uppercase tracking-wider text-center">
+              {activeTeamName} — Choose your replacement!
+            </div>
+            <div className="text-xs text-gray-400 text-center">
+              {activeTeamName}'s {activePokemon?.displayName} used a pivot move and is switching out
+              {battle.pivotPendingMove ? ` — ${battle.pivotPendingTeam === 1 ? team1.name : team2.name} will attack with ${battle.pivotPendingMove.displayName} next` : ''}.
+            </div>
+            <SwitchPanel
+              team={isPivotTeam1 ? team1 : team2}
+              onSwitch={(i) => completePivot(isPivotTeam1 ? 1 : 2, i)}
+            />
+          </div>
+        )}
+
         {(isTeam1Turn || isTeam2Turn) && (
           <div className="space-y-2">
+            {/* Indicator shown to team2 when team1 has already committed to switching */}
+            {isTeam2Turn && battle.team1SelectedSwitch !== null && (() => {
+              const incoming = team1.pokemon[battle.team1SelectedSwitch];
+              return (
+                <div className="text-xs text-yellow-300 bg-yellow-900/40 rounded-lg px-3 py-1.5 text-center">
+                  {team1.name} is switching to {incoming?.displayName} — choose your action
+                </div>
+              );
+            })()}
+
             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
-              {activeTeamName}'s {activePokemon?.displayName} — {activePokemon?.chargingMove ? 'Charging...' : 'Choose a move'}
+              {activeTeamName}'s {activePokemon?.displayName} — {activePokemon?.lockedMove ? 'Rampaging!' : activePokemon?.chargingMove ? 'Charging...' : showSwitchPicker ? 'Choose a Pokémon' : 'Choose a move'}
             </div>
 
-            {activePokemon?.chargingMove ? (
+            {/* Voluntary switch picker replaces move buttons when open */}
+            {showSwitchPicker && (
+              <SwitchPanel
+                team={isTeam1Turn ? team1 : team2}
+                onSwitch={(i) => {
+                  selectSwitch(isTeam1Turn ? 1 : 2, i);
+                  setShowSwitchPicker(false);
+                }}
+                onCancel={() => setShowSwitchPicker(false)}
+              />
+            )}
+            {!showSwitchPicker && (activePokemon?.lockedMove ? (
+              <div className="bg-gray-800 rounded-2xl p-4 text-center">
+                <div className="text-2xl mb-2">🌀</div>
+                <div className="text-white font-bold mb-1">{activePokemon.displayName} is rampaging with {activePokemon.lockedMove.displayName}!</div>
+                <div className="text-gray-400 text-xs mb-3">Can't stop now! ({activePokemon.lockedTurns} turn{activePokemon.lockedTurns !== 1 ? 's' : ''} left)</div>
+                <button
+                  onClick={() => selectMove(isTeam1Turn ? 1 : 2, activePokemon.lockedMove!)}
+                  className="px-6 py-2 bg-red-800 hover:bg-red-700 rounded-xl font-bold text-sm text-white"
+                >
+                  Continue Rampage →
+                </button>
+              </div>
+            ) : activePokemon?.chargingMove ? (
               <div className="bg-gray-800 rounded-2xl p-4 text-center">
                 <div className="text-2xl mb-2">
                   {activePokemon.chargingMove.name === 'dig' || activePokemon.chargingMove.name === 'dive' ? '🕳️'
@@ -577,9 +657,10 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
                 })()}
               </>
               );
-            })()}
+            })())}
 
-            {activePokemon && opponentPokemon && (
+            {/* End of !showSwitchPicker move block */}
+            {activePokemon && opponentPokemon && !showSwitchPicker && (
               <div>
                 <button
                   onClick={() => setShowStats(s => !s)}
@@ -594,21 +675,17 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
               </div>
             )}
 
-            <div className="flex gap-2 mt-2">
+            {!showSwitchPicker && <div className="flex gap-2 mt-2">
               {(() => {
                 const activeTeam = isTeam1Turn ? team1 : team2;
-                const canSwitch = activeTeam.pokemon.some((p, i) => i !== activeTeam.activeIndex && !p.isFainted);
+                const canSwitch = !activePokemon?.lockedMove && !activePokemon?.chargingMove &&
+                  activeTeam.pokemon.some((p, i) => i !== activeTeam.activeIndex && !p.isFainted);
                 return (
                   <button
-                    onClick={() => {
-                      const switchPhase = isTeam1Turn ? 'switch-team1' : 'switch-team2';
-                      useBattleStore.setState(s => ({
-                        battle: s.battle ? { ...s.battle, phase: switchPhase as any } : null
-                      }));
-                    }}
+                    onClick={() => setShowSwitchPicker(true)}
                     disabled={!canSwitch}
                     className="flex-1 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed text-sm font-bold"
-                    title={!canSwitch ? 'No other Pokémon available' : undefined}
+                    title={!canSwitch ? (activePokemon?.lockedMove ? 'Locked into a move!' : 'No other Pokémon available') : undefined}
                   >
                     Switch Pokemon
                   </button>
@@ -636,7 +713,7 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
               >
                 Forfeit
               </button>
-            </div>
+            </div>}
           </div>
         )}
       </div>
