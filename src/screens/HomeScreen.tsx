@@ -109,6 +109,7 @@ export function HomeScreen({ onGoTeams, onGoBattle, onGoHistory, teamCount }: Ho
       </div>
 
       <p className="mt-12 text-gray-600 text-sm">All data saved locally in your browser</p>
+      <p className="mt-2 text-gray-700 text-xs">Built by Nick, Danny, Bobby, Gloria, and Claude</p>
     </div>
   );
 }
