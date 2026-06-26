@@ -108,6 +108,24 @@ export function HomeScreen({ onGoTeams, onGoBattle, onGoHistory, teamCount }: Ho
 
       <p className="mt-12 text-gray-600 text-sm">All data saved locally in your browser</p>
       <p className="mt-2 text-gray-700 text-xs">Built by Nick, Danny, Bobby, Gloria, and Claude</p>
+      <div className="mt-3 flex items-center gap-4 text-xs">
+        <a
+          href="https://github.com/nick-moores/pokemon-battle"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-gray-600 hover:text-gray-400 transition-colors"
+        >
+          GitHub
+        </a>
+        <a
+          href="https://buymeacoffee.com/YOUR_USERNAME"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-yellow-700 hover:text-yellow-500 transition-colors"
+        >
+          ☕ Buy me a coffee
+        </a>
+      </div>
     </div>
   );
 }
