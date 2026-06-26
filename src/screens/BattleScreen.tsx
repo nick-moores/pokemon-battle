@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useBattleStore } from '../store/battleStore';
+import { useTeamStore } from '../store/teamStore';
 import { battleMusic, TRACKS } from '../utils/battleMusic';
 import { BattlePokemon, BattleTeam, Move, WeatherType } from '../types';
 import { HPBar } from '../components/HPBar';
@@ -9,6 +10,28 @@ import { TypeBadge } from '../components/TypeBadge';
 import { BattleLog, BattleTextBox } from '../components/BattleLog';
 import { getDamageBreakdown, DamageBreakdown, getStagedStat } from '../utils/damage';
 import { TYPE_COLORS } from '../data/typeColors';
+
+function SaveTeamCard({ battleTeam, onSave }: { battleTeam: BattleTeam; onSave: () => void }) {
+  const [saved, setSaved] = useState(false);
+  const active = battleTeam.pokemon[battleTeam.activeIndex];
+  return (
+    <div className="flex items-center justify-between bg-gray-800 rounded-xl px-4 py-3">
+      <div>
+        <div className="text-sm font-bold text-white">{battleTeam.name}</div>
+        <div className="text-xs text-gray-400 mt-0.5">
+          {battleTeam.pokemon.map(p => p.displayName).join(', ')}
+        </div>
+      </div>
+      <button
+        onClick={() => { onSave(); setSaved(true); }}
+        disabled={saved}
+        className="ml-4 shrink-0 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:text-gray-400 text-sm font-bold transition-colors"
+      >
+        {saved ? '✓ Saved' : '💾 Save'}
+      </button>
+    </div>
+  );
+}
 
 function PokemonSide({
   team,
@@ -417,13 +440,37 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
     onEnd();
   };
 
+  const savedTeamIds = useTeamStore(s => s.teams.map(t => t.id));
+  const { createTeam, addPokemonToTeam } = useTeamStore();
+
+  const saveTeam = (battleTeam: BattleTeam) => {
+    const saved = createTeam(battleTeam.name);
+    battleTeam.pokemon.forEach(p => addPokemonToTeam(saved.id, p));
+  };
+
   if (phase === 'game-over') {
     const winnerName = winner === 'team1' ? team1.name : team2.name;
+    const team1Saved = savedTeamIds.includes(team1.teamId);
+    const team2Saved = savedTeamIds.includes(team2.teamId);
+
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-6 text-white">
         <div className="text-6xl mb-4">🏆</div>
         <h2 className="text-3xl font-extrabold mb-2">{winnerName} wins!</h2>
-        <p className="text-gray-400 mb-2">Battle lasted {turn} turns</p>
+        <p className="text-gray-400 mb-6">Battle lasted {turn} turns</p>
+
+        {(!team1Saved || !team2Saved) && (
+          <div className="w-full max-w-md mb-6 space-y-3">
+            <p className="text-xs text-gray-500 uppercase tracking-wider text-center">Save a team?</p>
+            {!team1Saved && (
+              <SaveTeamCard battleTeam={team1} onSave={() => saveTeam(team1)} />
+            )}
+            {!team2Saved && (
+              <SaveTeamCard battleTeam={team2} onSave={() => saveTeam(team2)} />
+            )}
+          </div>
+        )}
+
         <div className="w-full max-w-md mb-6">
           <BattleLog entries={log} />
         </div>
