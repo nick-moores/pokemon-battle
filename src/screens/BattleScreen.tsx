@@ -440,8 +440,9 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
     onEnd();
   };
 
-  const savedTeamIds = useTeamStore(s => s.teams.map(t => t.id));
-  const { createTeam, addPokemonToTeam } = useTeamStore();
+  const savedTeams = useTeamStore(s => s.teams);
+  const createTeam = useTeamStore(s => s.createTeam);
+  const addPokemonToTeam = useTeamStore(s => s.addPokemonToTeam);
 
   const saveTeam = (battleTeam: BattleTeam) => {
     const saved = createTeam(battleTeam.name);
@@ -450,8 +451,8 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
 
   if (phase === 'game-over') {
     const winnerName = winner === 'team1' ? team1.name : team2.name;
-    const team1Saved = savedTeamIds.includes(team1.teamId);
-    const team2Saved = savedTeamIds.includes(team2.teamId);
+    const team1Saved = savedTeams.some(t => t.id === team1.teamId);
+    const team2Saved = savedTeams.some(t => t.id === team2.teamId);
 
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-6 text-white">
