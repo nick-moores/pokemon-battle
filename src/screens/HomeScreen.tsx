@@ -85,11 +85,9 @@ export function HomeScreen({ onGoTeams, onGoBattle, onGoHistory, teamCount }: Ho
       <div className="w-full max-w-sm space-y-4">
         <button
           onClick={onGoBattle}
-          disabled={teamCount < 2}
-          className="w-full py-5 rounded-2xl bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-red-900"
+          className="w-full py-5 rounded-2xl bg-red-600 hover:bg-red-500 font-bold text-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-red-900"
         >
           ⚔️ Start Battle
-          {teamCount < 2 && <div className="text-sm font-normal opacity-70 mt-1">Build 2 teams first</div>}
         </button>
 
         <button
