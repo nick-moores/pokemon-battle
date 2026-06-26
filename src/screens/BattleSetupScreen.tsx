@@ -236,13 +236,13 @@ export function BattleSetupScreen({ onBack, onBattleStart }: BattleSetupProps) {
           </div>
         )}
 
-        <button
+        {(!randomTeam || selectedId) && <button
           onClick={() => handleGenerate(slot)}
           disabled={generating}
           className="mt-3 w-full py-2.5 rounded-xl border border-dashed border-gray-600 hover:border-green-500 hover:bg-green-900/20 text-gray-400 hover:text-green-400 text-sm font-bold transition-all disabled:opacity-50"
         >
           {generating ? '⏳ Generating…' : '🎲 Random Team'}
-        </button>
+        </button>}
 
         {randomTeam && selectedId && (
           <button
