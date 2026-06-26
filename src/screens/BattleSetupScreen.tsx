@@ -154,6 +154,33 @@ export function BattleSetupScreen({ onBack, onBattleStart }: BattleSetupProps) {
     }
   };
 
+  const quickRandomBattle = async () => {
+    setGenerating1(true);
+    setGenerating2(true);
+    setTeam1Id(null);
+    setTeam2Id(null);
+    try {
+      const [t1, t2] = await Promise.all([generateRandomTeam(), generateRandomTeam()]);
+      setRandomTeam1(t1);
+      setRandomTeam2(t2);
+      setHydrating(true);
+      const hydrateTeam = async (t: Team): Promise<Team> => ({
+        ...t,
+        pokemon: await Promise.all(t.pokemon.map(async p => ({
+          ...p,
+          selectedMoves: await Promise.all(p.selectedMoves.map(m => fetchMove(m.name).then(fresh => fresh ?? m))),
+        }))),
+      });
+      const [h1, h2] = await Promise.all([hydrateTeam(t1), hydrateTeam(t2)]);
+      startBattle(h1, h2);
+      onBattleStart();
+    } finally {
+      setGenerating1(false);
+      setGenerating2(false);
+      setHydrating(false);
+    }
+  };
+
   const handleSave = (team: Team) => {
     const saved = createTeam(team.name);
     team.pokemon.forEach(p => addPokemonToTeam(saved.id, p));
@@ -235,6 +262,20 @@ export function BattleSetupScreen({ onBack, onBattleStart }: BattleSetupProps) {
         <div className="flex items-center gap-3 mb-6">
           <button onClick={onBack} className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-xl">←</button>
           <h2 className="text-2xl font-bold">Choose Teams</h2>
+        </div>
+
+        <button
+          onClick={quickRandomBattle}
+          disabled={hydrating || generating1 || generating2}
+          className="w-full py-4 rounded-2xl bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed font-bold text-lg mb-6 transition-all hover:scale-105 active:scale-95"
+        >
+          {(hydrating || generating1 || generating2) ? '⏳ Generating…' : '⚡ Quick Random Battle'}
+        </button>
+
+        <div className="flex items-center gap-3 mb-6">
+          <div className="flex-1 h-px bg-gray-700" />
+          <span className="text-xs text-gray-500 uppercase tracking-wider">or pick teams</span>
+          <div className="flex-1 h-px bg-gray-700" />
         </div>
 
         {renderSlot(1)}
