@@ -118,7 +118,7 @@ export function HomeScreen({ onGoTeams, onGoBattle, onGoHistory, teamCount }: Ho
           GitHub
         </a>
         <a
-          href="https://buymeacoffee.com/YOUR_USERNAME"
+          href="https://buymeacoffee.com/nickmoores"
           target="_blank"
           rel="noopener noreferrer"
           className="text-yellow-700 hover:text-yellow-500 transition-colors"
