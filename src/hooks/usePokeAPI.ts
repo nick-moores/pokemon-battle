@@ -188,6 +188,8 @@ export async function fetchPokemon(nameOrId: string | number): Promise<BasePokem
     displayName: formatName(data.name),
     sprite: data.sprites.other?.['official-artwork']?.front_default ?? data.sprites.front_default ?? '',
     backSprite: data.sprites.back_default ?? data.sprites.front_default ?? '',
+    animatedSprite: data.sprites.versions?.['generation-v']?.['black-white']?.animated?.front_default ?? '',
+    animatedBackSprite: data.sprites.versions?.['generation-v']?.['black-white']?.animated?.back_default ?? '',
     types: data.types.map((t: any) => t.type.name as string),
     stats,
     availableMoveNames,

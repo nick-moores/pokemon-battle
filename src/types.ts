@@ -46,6 +46,8 @@ export interface BasePokemon {
   displayName: string;
   sprite: string;
   backSprite: string;
+  animatedSprite: string;
+  animatedBackSprite: string;
   types: string[];
   stats: PokemonStats;
   availableMoveNames: string[];

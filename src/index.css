@@ -46,3 +46,94 @@ img {
 .pokemon-lunge-up   { animation: pokemon-lunge-up   0.42s ease-in-out; }
 .pokemon-lunge-down { animation: pokemon-lunge-down 0.42s ease-in-out; }
 .pokemon-flash      { animation: pokemon-flash      0.42s ease-in-out; }
+
+/* Shake — applied to the defending sprite when it takes a hit */
+@keyframes pokemon-shake {
+  0%, 100% { transform: translateX(0); }
+  15%       { transform: translateX(-9px); }
+  30%       { transform: translateX(9px); }
+  50%       { transform: translateX(-6px); }
+  70%       { transform: translateX(6px); }
+  85%       { transform: translateX(-3px); }
+}
+.pokemon-shake { animation: pokemon-shake 0.42s ease-in-out; }
+
+/* Faint — defender drops and fades */
+@keyframes pokemon-faint {
+  0%   { transform: translateY(0);    opacity: 1; }
+  100% { transform: translateY(56px); opacity: 0; }
+}
+.pokemon-faint { animation: pokemon-faint 0.55s ease-in forwards; }
+
+/* Slide in — new pokemon entering after a switch */
+@keyframes pokemon-slide-in-left {
+  from { transform: translateX(-80px); opacity: 0; }
+  to   { transform: translateX(0);      opacity: 1; }
+}
+@keyframes pokemon-slide-in-right {
+  from { transform: translateX(80px);  opacity: 0; }
+  to   { transform: translateX(0);      opacity: 1; }
+}
+.pokemon-slide-in-left  { animation: pokemon-slide-in-left  0.3s ease-out; }
+.pokemon-slide-in-right { animation: pokemon-slide-in-right 0.3s ease-out; }
+
+/* Move name banner */
+@keyframes banner-pop {
+  0%   { opacity: 0; transform: scale(0.85) translateY(4px); }
+  20%  { opacity: 1; transform: scale(1)    translateY(0);   }
+  80%  { opacity: 1; transform: scale(1)    translateY(0);   }
+  100% { opacity: 0; transform: scale(0.95) translateY(-4px); }
+}
+.move-banner { animation: banner-pop 0.8s ease-in-out forwards; }
+
+/* Weather overlays */
+@keyframes weather-rain {
+  from { background-position: 0 0; }
+  to   { background-position: -20px 120px; }
+}
+@keyframes weather-hail {
+  from { background-position: 0 0; }
+  to   { background-position: 10px 120px; }
+}
+@keyframes weather-sand {
+  from { background-position: 0 0; }
+  to   { background-position: 120px 40px; }
+}
+@keyframes weather-sun-pulse {
+  0%, 100% { opacity: 0.08; }
+  50%       { opacity: 0.18; }
+}
+
+.weather-rain {
+  background-image: repeating-linear-gradient(
+    110deg,
+    transparent 0px, transparent 4px,
+    rgba(100,160,255,0.35) 4px, rgba(100,160,255,0.35) 5px,
+    transparent 5px, transparent 14px
+  );
+  background-size: 20px 120px;
+  animation: weather-rain 0.5s linear infinite;
+  pointer-events: none;
+}
+.weather-hail {
+  background-image: radial-gradient(circle, rgba(180,230,255,0.6) 1px, transparent 2px);
+  background-size: 18px 18px;
+  animation: weather-hail 0.9s linear infinite;
+  pointer-events: none;
+}
+.weather-sand {
+  background-image: repeating-linear-gradient(
+    10deg,
+    transparent 0px, transparent 6px,
+    rgba(210,140,40,0.2) 6px, rgba(210,140,40,0.2) 8px,
+    transparent 8px, transparent 20px
+  );
+  background-size: 120px 40px;
+  animation: weather-sand 1.2s linear infinite;
+  pointer-events: none;
+}
+.weather-sun {
+  background: radial-gradient(ellipse at 50% 0%, rgba(255,200,50,0.35) 0%, transparent 70%);
+  animation: weather-sun-pulse 2s ease-in-out infinite;
+  pointer-events: none;
+}

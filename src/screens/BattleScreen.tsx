@@ -39,24 +39,40 @@ function PokemonSide({
   showBack,
   lunging = false,
   flashing = false,
+  shaking = false,
+  fainting = false,
+  slidingIn = false,
 }: {
   team: BattleTeam;
   isTop: boolean;
   showBack: boolean;
   lunging?: boolean;
   flashing?: boolean;
+  shaking?: boolean;
+  fainting?: boolean;
+  slidingIn?: boolean;
 }) {
   const pokemon = team.pokemon[team.activeIndex];
   if (!pokemon) return null;
   const fainted = pokemon.isFainted;
 
+  const animatedSrc = showBack
+    ? (pokemon.animatedBackSprite || pokemon.backSprite || pokemon.sprite)
+    : (pokemon.animatedSprite || pokemon.sprite);
+
+  const lungeClass = lunging ? (isTop ? 'pokemon-lunge-down' : 'pokemon-lunge-up') : '';
+  const shakeClass = shaking ? 'pokemon-shake' : '';
+  const faintClass = fainting ? 'pokemon-faint' : '';
+  const slideClass = slidingIn ? (isTop ? 'pokemon-slide-in-right' : 'pokemon-slide-in-left') : '';
+  const wrapperAnim = [lungeClass, shakeClass, faintClass, slideClass].filter(Boolean).join(' ');
+
   return (
     <div className={`flex ${isTop ? 'flex-row-reverse' : 'flex-row'} items-end gap-3`}>
-      <div className={`relative ${lunging ? (isTop ? 'pokemon-lunge-down' : 'pokemon-lunge-up') : ''}`}>
+      <div className={`relative ${wrapperAnim}`}>
         <img
-          src={showBack ? pokemon.backSprite || pokemon.sprite : pokemon.sprite}
+          src={animatedSrc}
           alt={pokemon.displayName}
-          className={`w-28 h-28 object-contain transition-opacity duration-300 ${fainted ? 'opacity-20 grayscale' : ''} ${flashing ? 'pokemon-flash' : ''}`}
+          className={`w-28 h-28 object-contain transition-opacity duration-300 ${fainted && !fainting ? 'opacity-20 grayscale' : ''} ${flashing ? 'pokemon-flash' : ''}`}
           style={{ imageRendering: 'pixelated' }}
         />
         {pokemon.substituteHp !== null && !fainted && (
@@ -375,9 +391,17 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
   const [hoveredMove, setHoveredMove] = useState<Move | null>(null);
   const [showStats, setShowStats] = useState(false);
   const [showSwitchPicker, setShowSwitchPicker] = useState(false);
-  const [anim, setAnim] = useState({ t1Lunge: false, t2Lunge: false, t1Flash: false, t2Flash: false });
+  const [anim, setAnim] = useState({
+    t1Lunge: false, t2Lunge: false,
+    t1Flash: false,  t2Flash: false,
+    t1Shake: false,  t2Shake: false,
+    t1Faint: false,  t2Faint: false,
+    t1SlideIn: false, t2SlideIn: false,
+  });
+  const [moveBanner, setMoveBanner] = useState<string | null>(null);
   const prevLogLen = useRef(battle?.log.length ?? 0);
   const animTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     battleMusic.play();
@@ -399,27 +423,59 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
     prevLogLen.current = battle.log.length;
     if (!newEntries.length) return;
 
-    const t1Name = battle.team1.pokemon[battle.team1.activeIndex]?.displayName ?? '';
-    const t2Name = battle.team2.pokemon[battle.team2.activeIndex]?.displayName ?? '';
+    const t1ActiveNames = new Set(battle.team1.pokemon.map(p => p.displayName));
+    const t2ActiveNames = new Set(battle.team2.pokemon.map(p => p.displayName));
 
-    let t1Lunge = false, t2Lunge = false, t1Flash = false, t2Flash = false;
+    let t1Lunge = false, t2Lunge = false;
+    let t1Flash = false,  t2Flash = false;
+    let t1Shake = false,  t2Shake = false;
+    let t1Faint = false,  t2Faint = false;
+    let t1SlideIn = false, t2SlideIn = false;
+    let bannerText: string | null = null;
+
     for (const entry of newEntries) {
-      if (entry.type !== 'damage') continue;
-      if (!entry.text.includes(' took ') || !entry.text.endsWith(' damage!')) continue;
-      const hitName = entry.text.split(' took ')[0];
-      if (hitName === t2Name) { t1Lunge = true; t2Flash = true; }
-      if (hitName === t1Name) { t2Lunge = true; t1Flash = true; }
+      if (entry.type === 'damage' && entry.text.includes(' took ') && entry.text.endsWith(' damage!')) {
+        const hitName = entry.text.split(' took ')[0];
+        if (t2ActiveNames.has(hitName)) { t1Lunge = true; t2Flash = true; t2Shake = true; }
+        if (t1ActiveNames.has(hitName)) { t2Lunge = true; t1Flash = true; t1Shake = true; }
+      }
+      if (entry.type === 'faint') {
+        const faintedName = entry.text.replace(' fainted!', '');
+        if (t1ActiveNames.has(faintedName)) t1Faint = true;
+        if (t2ActiveNames.has(faintedName)) t2Faint = true;
+      }
+      if (entry.type === 'switch') {
+        if (entry.text.startsWith(battle.team1.name + ' sent out')) t1SlideIn = true;
+        if (entry.text.startsWith(battle.team2.name + ' sent out')) t2SlideIn = true;
+      }
+      if (entry.type === 'move' && !bannerText) {
+        const m = entry.text.match(/used (.+)!$/);
+        if (m) bannerText = m[1];
+      }
     }
 
-    if (!t1Lunge && !t2Lunge && !t1Flash && !t2Flash) return;
-    if (animTimer.current) clearTimeout(animTimer.current);
-    setAnim({ t1Lunge, t2Lunge, t1Flash, t2Flash });
-    animTimer.current = setTimeout(() => {
-      setAnim({ t1Lunge: false, t2Lunge: false, t1Flash: false, t2Flash: false });
-    }, 450);
+    const anyAnim = t1Lunge || t2Lunge || t1Flash || t2Flash || t1Shake || t2Shake || t1Faint || t2Faint || t1SlideIn || t2SlideIn;
+    if (anyAnim) {
+      if (animTimer.current) clearTimeout(animTimer.current);
+      setAnim({ t1Lunge, t2Lunge, t1Flash, t2Flash, t1Shake, t2Shake, t1Faint, t2Faint, t1SlideIn, t2SlideIn });
+      animTimer.current = setTimeout(() => setAnim({
+        t1Lunge: false, t2Lunge: false, t1Flash: false, t2Flash: false,
+        t1Shake: false, t2Shake: false, t1Faint: false, t2Faint: false,
+        t1SlideIn: false, t2SlideIn: false,
+      }), 600);
+    }
+
+    if (bannerText) {
+      if (bannerTimer.current) clearTimeout(bannerTimer.current);
+      setMoveBanner(bannerText);
+      bannerTimer.current = setTimeout(() => setMoveBanner(null), 800);
+    }
   }, [battle?.log.length]);
 
-  useEffect(() => () => { if (animTimer.current) clearTimeout(animTimer.current); }, []);
+  useEffect(() => () => {
+    if (animTimer.current) clearTimeout(animTimer.current);
+    if (bannerTimer.current) clearTimeout(bannerTimer.current);
+  }, []);
 
   const toggleMute = () => {
     setMuted(m => {
@@ -545,10 +601,31 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
       </div>
 
       <div className="flex-1 p-4 space-y-4 max-w-lg mx-auto w-full">
-        <PokemonSide team={team2} isTop={true} showBack={false} lunging={anim.t2Lunge} flashing={anim.t2Flash} />
+        <PokemonSide
+          team={team2} isTop={true} showBack={false}
+          lunging={anim.t2Lunge} flashing={anim.t2Flash}
+          shaking={anim.t2Shake} fainting={anim.t2Faint} slidingIn={anim.t2SlideIn}
+        />
 
-        <div className="text-center py-1">
-          <div className="inline-flex items-center gap-2 bg-gray-800 rounded-full px-4 py-1.5">
+        <div className="relative text-center py-1">
+          {/* Weather overlay */}
+          {weather && (
+            <div className={`absolute inset-0 rounded-xl overflow-hidden ${
+              weather === 'rain' ? 'weather-rain' :
+              weather === 'hail' ? 'weather-hail' :
+              weather === 'sandstorm' ? 'weather-sand' :
+              'weather-sun'
+            }`} />
+          )}
+          {/* Move name banner */}
+          {moveBanner && (
+            <div className="move-banner absolute inset-x-0 -top-6 flex justify-center z-10">
+              <span className="bg-gray-900/90 border border-gray-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">
+                {moveBanner}
+              </span>
+            </div>
+          )}
+          <div className="inline-flex items-center gap-2 bg-gray-800 rounded-full px-4 py-1.5 relative z-10">
             <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
             <span className="text-sm font-bold text-gray-200">
               {isTeam1Turn
@@ -562,7 +639,11 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
           </div>
         </div>
 
-        <PokemonSide team={team1} isTop={false} showBack={true} lunging={anim.t1Lunge} flashing={anim.t1Flash} />
+        <PokemonSide
+          team={team1} isTop={false} showBack={true}
+          lunging={anim.t1Lunge} flashing={anim.t1Flash}
+          shaking={anim.t1Shake} fainting={anim.t1Faint} slidingIn={anim.t1SlideIn}
+        />
 
         <BattleTextBox entries={log} />
 
