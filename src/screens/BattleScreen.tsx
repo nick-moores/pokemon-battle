@@ -399,9 +399,11 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
     t1SlideIn: false, t2SlideIn: false,
   });
   const [moveBanner, setMoveBanner] = useState<string | null>(null);
+  const [showGameOver, setShowGameOver] = useState(false);
   const prevLogLen = useRef(battle?.log.length ?? 0);
   const animTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gameOverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     battleMusic.play();
@@ -475,7 +477,18 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
   useEffect(() => () => {
     if (animTimer.current) clearTimeout(animTimer.current);
     if (bannerTimer.current) clearTimeout(bannerTimer.current);
+    if (gameOverTimer.current) clearTimeout(gameOverTimer.current);
   }, []);
+
+  // Delay the trophy screen so faint animations can finish playing
+  useEffect(() => {
+    if (battle?.phase === 'game-over') {
+      gameOverTimer.current = setTimeout(() => setShowGameOver(true), 900);
+    } else {
+      setShowGameOver(false);
+      if (gameOverTimer.current) clearTimeout(gameOverTimer.current);
+    }
+  }, [battle?.phase]);
 
   const toggleMute = () => {
     setMuted(m => {
@@ -505,7 +518,7 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
     battleTeam.pokemon.forEach(p => addPokemonToTeam(saved.id, p));
   };
 
-  if (phase === 'game-over') {
+  if (showGameOver) {
     const winnerName = winner === 'team1' ? team1.name : team2.name;
     const team1Saved = savedTeams.some(t => t.id === team1.teamId);
     const team2Saved = savedTeams.some(t => t.id === team2.teamId);
@@ -780,10 +793,12 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
                       </div>
                     ))}
                   </div>
-                {hoveredMove && activePokemon && opponentPokemon && (() => {
-                  const bd = getDamageBreakdown(activePokemon, opponentPokemon, hoveredMove, weather);
-                  return bd ? <DamageForecast breakdown={bd} moveName={hoveredMove.displayName} /> : null;
-                })()}
+                <div className="min-h-[72px]">
+                  {hoveredMove && activePokemon && opponentPokemon && (() => {
+                    const bd = getDamageBreakdown(activePokemon, opponentPokemon, hoveredMove, weather);
+                    return bd ? <DamageForecast breakdown={bd} moveName={hoveredMove.displayName} /> : null;
+                  })()}
+                </div>
               </>
               );
             })())}

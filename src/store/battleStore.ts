@@ -214,9 +214,9 @@ function applyWeatherTick(
   if (!weather || weather === 'sunny' || weather === 'rain') return { t1, t2 };
   const immune = WEATHER_IMMUNE[weather];
   const label = weather === 'sandstorm' ? 'sandstorm' : 'hail';
-  const tickTeam = (team: BattleTeam): BattleTeam => ({
-    ...team,
-    pokemon: team.pokemon.map(p => {
+  const tickTeam = (team: BattleTeam): BattleTeam => {
+    const pokemon = team.pokemon.map((p, i) => {
+      if (i !== team.activeIndex) return p; // only the active pokemon takes chip damage
       if (p.isFainted || p.types.some(t => immune.includes(t.toLowerCase())) ||
           (weather === 'sandstorm' && p.ability === 'sand-rush')) return p;
       const dmg = Math.max(1, Math.floor(p.stats.hp / 16));
@@ -224,8 +224,9 @@ function applyWeatherTick(
       const updated = applyDamage(p, dmg);
       if (updated.isFainted) logs.push(log(`${p.displayName} fainted!`, 'faint'));
       return updated;
-    }),
-  });
+    });
+    return { ...team, pokemon };
+  };
   return { t1: tickTeam(t1), t2: tickTeam(t2) };
 }
 
