@@ -135,11 +135,11 @@ function PokemonSide({
                     <span className={`text-[11px] font-black leading-tight ${stage > 0 ? 'text-green-200' : stage < 0 ? 'text-red-200' : statusPenalty ? 'text-orange-200' : tailwindActive ? 'text-cyan-200' : 'text-gray-300'}`}>
                       {effective}
                     </span>
-                    {(stage !== 0 || tailwindActive || statusPenalty) && (
-                      <span className={`text-[9px] leading-none ${stage > 0 ? 'text-green-400' : stage < 0 ? 'text-red-400' : statusPenalty ? 'text-orange-400' : 'text-cyan-400'}`}>
-                        {statusPenalty ? '▼½' : tailwindActive ? '×2' : (arrows || (stage > 0 ? `+${stage}` : `${stage}`))}
-                      </span>
-                    )}
+                    <span className={`text-[9px] leading-none ${stage > 0 ? 'text-green-400' : stage < 0 ? 'text-red-400' : statusPenalty ? 'text-orange-400' : 'text-cyan-400'}`}>
+                      {(stage !== 0 || tailwindActive || statusPenalty)
+                        ? (statusPenalty ? '▼½' : tailwindActive ? '×2' : (arrows || (stage > 0 ? `+${stage}` : `${stage}`)))
+                        : ' '}
+                    </span>
                   </div>
                 );
               })}
