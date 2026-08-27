@@ -130,7 +130,7 @@ export function BattleTextBox({ entries }: { entries: BattleLogEntry[] }) {
         </div>
       )}
 
-      <div className="px-4 py-3 space-y-1 min-h-[108px]">
+      <div className="px-4 py-3 space-y-1 h-[120px] overflow-y-auto">
         {recent.map((e, i) => (
           <LogEntry key={e.id} entry={e} isOld={i < recent.length - 1} />
         ))}
