@@ -777,28 +777,32 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 gap-2">
-                    {activeMoves.map((move, i) => (
-                      <div
-                        key={move.id}
-                        onMouseEnter={() => setHoveredMove(move)}
-                        onMouseLeave={() => setHoveredMove(null)}
-                      >
-                        <MoveButton
-                          move={move}
-                          defenderTypes={opponentPokemon?.types}
-                          currentPP={ppList[i]}
-                          onClick={() => selectMove(isTeam1Turn ? 1 : 2, move)}
-                        />
-                      </div>
-                    ))}
+                  <div className="relative">
+                    <div className="grid grid-cols-2 gap-2">
+                      {activeMoves.map((move, i) => (
+                        <div
+                          key={move.id}
+                          onMouseEnter={() => setHoveredMove(move)}
+                          onMouseLeave={() => setHoveredMove(null)}
+                        >
+                          <MoveButton
+                            move={move}
+                            defenderTypes={opponentPokemon?.types}
+                            currentPP={ppList[i]}
+                            onClick={() => selectMove(isTeam1Turn ? 1 : 2, move)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    {hoveredMove && activePokemon && opponentPokemon && (() => {
+                      const bd = getDamageBreakdown(activePokemon, opponentPokemon, hoveredMove, weather);
+                      return bd ? (
+                        <div className="absolute bottom-full left-0 right-0 mb-2 z-20 pointer-events-none">
+                          <DamageForecast breakdown={bd} moveName={hoveredMove.displayName} />
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
-                <div className="min-h-[72px]">
-                  {hoveredMove && activePokemon && opponentPokemon && (() => {
-                    const bd = getDamageBreakdown(activePokemon, opponentPokemon, hoveredMove, weather);
-                    return bd ? <DamageForecast breakdown={bd} moveName={hoveredMove.displayName} /> : null;
-                  })()}
-                </div>
               </>
               );
             })())}
