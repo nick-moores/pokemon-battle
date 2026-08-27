@@ -107,13 +107,15 @@ function LogEntry({ entry, isOld }: { entry: BattleLogEntry; isOld?: boolean }) 
 // Always-visible game-style text box showing the last few messages
 export function BattleTextBox({ entries }: { entries: BattleLogEntry[] }) {
   const [expanded, setExpanded] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevLen = useRef(entries.length);
 
   useEffect(() => {
     if (entries.length !== prevLen.current) {
       prevLen.current = entries.length;
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      // Scroll inside the fixed-height box, not the page
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
     }
   }, [entries.length]);
 
@@ -130,7 +132,7 @@ export function BattleTextBox({ entries }: { entries: BattleLogEntry[] }) {
         </div>
       )}
 
-      <div className="px-4 py-3 space-y-1 h-[120px] overflow-y-auto">
+      <div ref={scrollRef} className="px-4 py-3 space-y-1 h-[120px] overflow-y-auto">
         {recent.map((e, i) => (
           <LogEntry key={e.id} entry={e} isOld={i < recent.length - 1} />
         ))}
