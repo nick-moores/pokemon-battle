@@ -99,9 +99,9 @@ img {
   from { background-position: 0 0; }
   to   { background-position: 120px 40px; }
 }
-@keyframes weather-sun-pulse {
-  0%, 100% { opacity: 0.08; }
-  50%       { opacity: 0.18; }
+@keyframes weather-sun-slide {
+  from { background-position: -100px 0; }
+  to   { background-position: 200px 0; }
 }
 
 .weather-rain {
@@ -133,7 +133,13 @@ img {
   pointer-events: none;
 }
 .weather-sun {
-  background: radial-gradient(ellipse at 50% 0%, rgba(255,200,50,0.35) 0%, transparent 70%);
-  animation: weather-sun-pulse 2s ease-in-out infinite;
+  background-image: repeating-linear-gradient(
+    70deg,
+    transparent 0px, transparent 18px,
+    rgba(255, 210, 60, 0.28) 18px, rgba(255, 210, 60, 0.28) 24px,
+    transparent 24px, transparent 48px
+  );
+  background-size: 200px 100%;
+  animation: weather-sun-slide 1.8s linear infinite;
   pointer-events: none;
 }

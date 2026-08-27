@@ -24,7 +24,7 @@ export function MoveButton({ move, defenderTypes, onClick, disabled, selected, c
       onClick={onClick}
       disabled={disabled || ppEmpty}
       className={`
-        relative w-full rounded-xl p-3 text-left transition-all duration-150 border-2
+        relative w-full h-[76px] rounded-xl p-3 text-left transition-all duration-150 border-2 overflow-hidden
         ${disabled || ppEmpty ? 'opacity-40 cursor-not-allowed' : 'hover:scale-105 active:scale-95 cursor-pointer'}
         ${selected ? 'ring-4 ring-white ring-offset-2 ring-offset-gray-900' : ''}
       `}
@@ -35,7 +35,7 @@ export function MoveButton({ move, defenderTypes, onClick, disabled, selected, c
       }}
     >
       <div className="flex items-start justify-between gap-1">
-        <div className="font-bold text-sm leading-tight">{move.displayName}</div>
+        <div className="font-bold text-sm leading-tight truncate">{move.displayName}</div>
         <div className={`text-[10px] font-bold shrink-0 ${ppEmpty ? 'text-red-300' : ppLow ? 'text-orange-300' : 'opacity-70'}`}>
           {pp}/{move.pp}
         </div>
@@ -47,11 +47,9 @@ export function MoveButton({ move, defenderTypes, onClick, disabled, selected, c
         <span className="opacity-70">|</span>
         <span className="capitalize">{move.damageClass}</span>
       </div>
-      {effectText && (
-        <div className={`text-[10px] mt-1 font-bold ${effectiveness >= 2 ? 'text-yellow-300' : 'text-red-300'}`}>
-          {effectText}
-        </div>
-      )}
+      <div className={`text-[10px] mt-1 font-bold ${effectiveness >= 2 ? 'text-yellow-300' : effectiveness < 1 ? 'text-red-300' : ''}`}>
+        {effectText || ' '}
+      </div>
     </button>
   );
 }
