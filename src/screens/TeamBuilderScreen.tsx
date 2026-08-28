@@ -320,7 +320,7 @@ function TeamCard({ team, onEdit }: { team: Team; onEdit: () => void }) {
 }
 
 function EditTeam({ team, onBack }: { team: Team; onBack: () => void }) {
-  const { addPokemonToTeam, removePokemonFromTeam, updateTeam, reorderPokemon, updatePokemonAbility } = useTeamStore();
+  const { addPokemonToTeam, removePokemonFromTeam, updateTeam, reorderPokemon, updatePokemonAbility, updatePokemonShiny } = useTeamStore();
   const [query, setQuery] = useState('');
   const [editingMoves, setEditingMoves] = useState<TeamPokemon | null>(null);
   const [editingItem, setEditingItem] = useState<TeamPokemon | null>(null);
@@ -443,7 +443,11 @@ function EditTeam({ team, onBack }: { team: Team; onBack: () => void }) {
                 ⠿
               </div>
               <span className="text-gray-600 font-bold w-4 text-center text-sm">{i + 1}</span>
-              <img src={p.sprite} alt={p.displayName} className="w-12 h-12 object-contain" />
+              <img
+                src={(p.isShiny && p.shinySprite) ? p.shinySprite : p.sprite}
+                alt={p.displayName}
+                className="w-12 h-12 object-contain"
+              />
               <div className="flex-1 min-w-0">
                 <div className="font-bold text-white">{p.displayName}</div>
                 <div className="flex gap-1 mt-0.5">
@@ -497,6 +501,17 @@ function EditTeam({ team, onBack }: { team: Team; onBack: () => void }) {
                   className="px-3 py-1 bg-purple-700 hover:bg-purple-600 rounded-lg text-xs font-bold"
                 >
                   {p.heldItem ? '✦ Item' : 'Item'}
+                </button>
+                <button
+                  onClick={() => updatePokemonShiny(team.id, p.id, !p.isShiny)}
+                  title={p.isShiny ? 'Shiny — click to revert' : 'Make shiny'}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                    p.isShiny
+                      ? 'bg-yellow-500 hover:bg-yellow-400 text-gray-900'
+                      : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                  }`}
+                >
+                  ✨
                 </button>
               </div>
               <button

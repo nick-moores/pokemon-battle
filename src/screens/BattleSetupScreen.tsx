@@ -56,8 +56,8 @@ function TeamCard({ team, selected, onClick }: { team: Team; selected: boolean; 
       <div className="flex gap-2 flex-wrap">
         {team.pokemon.map(p => (
           <div key={p.id} className="flex flex-col items-center">
-            <img src={p.sprite} alt={p.displayName} className="w-10 h-10 object-contain" />
-            <div className="text-[9px] text-gray-400 text-center">{p.displayName}</div>
+            <img src={(p.isShiny && p.shinySprite) ? p.shinySprite : p.sprite} alt={p.displayName} className="w-10 h-10 object-contain" />
+            <div className="text-[9px] text-gray-400 text-center">{p.displayName}{p.isShiny ? ' ✨' : ''}</div>
             {p.selectedMoves.length === 0 && <div className="text-[9px] text-red-400">no moves</div>}
           </div>
         ))}
@@ -105,8 +105,8 @@ function RandomTeamCard({
       <div className="flex gap-3 flex-wrap">
         {team.pokemon.map(p => (
           <div key={p.id} className="flex flex-col items-center">
-            <img src={p.sprite} alt={p.displayName} className="w-12 h-12 object-contain" />
-            <div className="text-[9px] text-white font-bold text-center">{p.displayName}</div>
+            <img src={(p.isShiny && p.shinySprite) ? p.shinySprite : p.sprite} alt={p.displayName} className="w-12 h-12 object-contain" />
+            <div className="text-[9px] text-white font-bold text-center">{p.displayName}{p.isShiny ? ' ✨' : ''}</div>
             <div className="flex gap-0.5 mt-0.5">
               {p.types.map(t => <TypeBadge key={t} type={t} small />)}
             </div>

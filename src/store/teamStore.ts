@@ -12,6 +12,7 @@ interface TeamStore {
   updatePokemonMoves: (teamId: string, pokemonId: number, moves: TeamPokemon['selectedMoves']) => void;
   updatePokemonAbility: (teamId: string, pokemonId: number, ability: string) => void;
   updatePokemonHeldItem: (teamId: string, pokemonId: number, item: string) => void;
+  updatePokemonShiny: (teamId: string, pokemonId: number, isShiny: boolean) => void;
   reorderPokemon: (teamId: string, fromIndex: number, toIndex: number) => void;
 }
 
@@ -78,6 +79,15 @@ export const useTeamStore = create<TeamStore>()(
           teams: s.teams.map((t) =>
             t.id === teamId
               ? { ...t, pokemon: t.pokemon.map((p) => p.id === pokemonId ? { ...p, heldItem } : p) }
+              : t
+          ),
+        })),
+
+      updatePokemonShiny: (teamId, pokemonId, isShiny) =>
+        set((s) => ({
+          teams: s.teams.map((t) =>
+            t.id === teamId
+              ? { ...t, pokemon: t.pokemon.map((p) => p.id === pokemonId ? { ...p, isShiny } : p) }
               : t
           ),
         })),

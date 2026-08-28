@@ -49,6 +49,10 @@ export interface BasePokemon {
   backSprite: string;
   animatedSprite: string;
   animatedBackSprite: string;
+  shinySprite: string;
+  shinyBackSprite: string;
+  shinyAnimatedSprite: string;
+  shinyAnimatedBackSprite: string;
   types: string[];
   stats: PokemonStats;
   availableMoveNames: string[];
@@ -59,6 +63,7 @@ export interface TeamPokemon extends BasePokemon {
   selectedMoves: Move[];
   ability: string;
   heldItem?: string;   // PokeAPI slug, e.g. 'leftovers'; undefined/'' = none
+  isShiny?: boolean;
 }
 
 export interface Team {

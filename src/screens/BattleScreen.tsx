@@ -57,9 +57,13 @@ function PokemonSide({
   if (!pokemon) return null;
   const fainted = pokemon.isFainted;
 
-  const animatedSrc = showBack
-    ? (pokemon.animatedBackSprite || pokemon.backSprite || pokemon.sprite)
-    : (pokemon.animatedSprite || pokemon.sprite);
+  const animatedSrc = pokemon.isShiny
+    ? (showBack
+        ? (pokemon.shinyAnimatedBackSprite || pokemon.shinyBackSprite || pokemon.animatedBackSprite || pokemon.backSprite || pokemon.sprite)
+        : (pokemon.shinyAnimatedSprite || pokemon.shinySprite || pokemon.animatedSprite || pokemon.sprite))
+    : (showBack
+        ? (pokemon.animatedBackSprite || pokemon.backSprite || pokemon.sprite)
+        : (pokemon.animatedSprite || pokemon.sprite));
 
   const lungeClass = lunging ? (isTop ? 'pokemon-lunge-down' : 'pokemon-lunge-up') : '';
   const shakeClass = shaking ? 'pokemon-shake' : '';
@@ -92,6 +96,9 @@ function PokemonSide({
       <div className={`flex-1 ${isTop ? 'text-right' : 'text-left'}`}>
         <div className={`flex items-center gap-2 mb-1 ${isTop ? 'justify-end' : 'justify-start'}`}>
           <span className="font-bold text-white text-lg">{pokemon.displayName}</span>
+          {pokemon.isShiny && (
+            <span className="text-[10px]" title="Shiny">✨</span>
+          )}
           <StatusBadge status={pokemon.status} />
           {(pokemon.confusionTurns ?? 0) > 0 && (
             <span className="inline-block text-[9px] font-bold px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: '#FF88AA' }}>
@@ -229,8 +236,8 @@ function SwitchPanel({
                 : 'border-gray-600 hover:border-green-400 bg-gray-800 hover:bg-gray-700 cursor-pointer hover:scale-105'
               }`}
           >
-            <img src={p.sprite} alt={p.displayName} className="w-12 h-12 object-contain" />
-            <span className="text-xs text-white font-medium text-center mt-1 leading-tight">{p.displayName}</span>
+            <img src={(p.isShiny && p.shinySprite) ? p.shinySprite : p.sprite} alt={p.displayName} className="w-12 h-12 object-contain" />
+            <span className="text-xs text-white font-medium text-center mt-1 leading-tight">{p.displayName}{p.isShiny ? ' ✨' : ''}</span>
             <div className="text-xs text-gray-400">{p.currentHp}/{p.stats.hp}</div>
           </button>
         ))}
