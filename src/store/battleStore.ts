@@ -288,6 +288,16 @@ function executeMove(
 
   logs.push(log(`${attackerName} used ${move.displayName}!`, 'move'));
 
+  // Choice lock: commit to this move immediately on declaration (before accuracy check),
+  // so misses still lock the user in — matches main-series behaviour.
+  {
+    const choiceItem = atk.heldItem ?? '';
+    if (!atk.choiceLockedMove && move.damageClass !== 'status' &&
+        (choiceItem === 'choice-band' || choiceItem === 'choice-specs' || choiceItem === 'choice-scarf')) {
+      atk = { ...atk, choiceLockedMove: move };
+    }
+  }
+
   // Accuracy check — move.accuracy is null for always-hit moves (Swift, Aerial Ace, etc.)
   // Old saved moves without the field also always hit (backward compatible)
   const moveAcc: number | null = (move as any).accuracy ?? null;
@@ -477,9 +487,12 @@ function executeMove(
     return { atk, def };
   }
 
-  const effectText = getEffectivenessText(effectiveness);
-  if (effectText) logs.push(log(effectText, 'effectiveness'));
-  if (isCrit) logs.push(log('A critical hit!', 'info'));
+  // Only show effectiveness/crit text when the move actually deals damage
+  if (damage > 0) {
+    const effectText = getEffectivenessText(effectiveness);
+    if (effectText) logs.push(log(effectText, 'effectiveness'));
+    if (isCrit) logs.push(log('A critical hit!', 'info'));
+  }
 
   const calcRecord: BattleLogEntry['damageCalc'] = {
     moveName: move.displayName,
@@ -495,6 +508,8 @@ function executeMove(
     weatherMult: calcResult.weatherMult,
     abilityMult: calcResult.abilityMult,
     abilityNote: calcResult.abilityNote,
+    itemMult: calcResult.itemMult,
+    itemNote: calcResult.itemNote,
     isCrit,
     randomFactor: calcResult.randomFactor,
     finalDamage: damage,
@@ -593,13 +608,6 @@ function executeMove(
     atk = applyDamage(atk, orbDmg);
     logs.push(log(`${atk.displayName} lost HP due to Life Orb!`, 'damage'));
     if (atk.isFainted) logs.push(log(`${atk.displayName} fainted!`, 'faint'));
-  }
-
-  // Choice lock: lock the attacker to this move if holding a Choice item
-  const atkItemHeld = atk.heldItem ?? '';
-  if (damage > 0 && (atkItemHeld === 'choice-band' || atkItemHeld === 'choice-specs' || atkItemHeld === 'choice-scarf') &&
-      !(atk.choiceLockedMove)) {
-    atk = { ...atk, choiceLockedMove: move };
   }
 
   // Drain moves (Drain Punch, Giga Drain, etc.) — heal attacker by move.drain% of damage dealt
@@ -821,7 +829,8 @@ function applyFutureSightForTeam(
     atkStage: fsResult.atkStage, defStage: fsResult.defStage,
     stabMult: fsResult.stabMult, effectiveness: fsResult.effectiveness,
     weatherMult: fsResult.weatherMult, abilityMult: fsResult.abilityMult,
-    abilityNote: fsResult.abilityNote, isCrit: fsResult.isCrit,
+    abilityNote: fsResult.abilityNote, itemMult: fsResult.itemMult,
+    itemNote: fsResult.itemNote, isCrit: fsResult.isCrit,
     randomFactor: fsResult.randomFactor, finalDamage: fsResult.damage,
     defenderMaxHp: defender2.stats.hp,
   };

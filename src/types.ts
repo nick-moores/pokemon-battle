@@ -140,6 +140,8 @@ export interface DamageCalcRecord {
   weatherMult: number;
   abilityMult: number;   // combined ability multiplier on damage
   abilityNote: string;
+  itemMult: number;
+  itemNote: string;
   isCrit: boolean;
   randomFactor: number;  // 0.85–1.00
   finalDamage: number;

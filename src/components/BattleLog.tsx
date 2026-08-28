@@ -55,6 +55,9 @@ function CalcBreakdown({ c }: { c: DamageCalcRecord }) {
       {c.abilityNote && (
         <div className="text-blue-300">⚡ {c.abilityNote}</div>
       )}
+      {c.itemNote && (
+        <div className="text-purple-300">✦ {c.itemNote}</div>
+      )}
 
       {mults.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
