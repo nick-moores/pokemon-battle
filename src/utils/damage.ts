@@ -1,7 +1,17 @@
 import { BattlePokemon, Move, Stages, WeatherType } from '../types';
 import { getTypeEffectiveness } from '../data/typeChart';
+import { formatItemName } from '../data/heldItems';
 
 const LEVEL = 50;
+
+const TYPE_ITEM_BOOSTS: Record<string, string> = {
+  'charcoal': 'fire', 'mystic-water': 'water', 'miracle-seed': 'grass',
+  'magnet': 'electric', 'twisted-spoon': 'psychic', 'never-melt-ice': 'ice',
+  'black-belt': 'fighting', 'sharp-beak': 'flying', 'poison-barb': 'poison',
+  'soft-sand': 'ground', 'hard-stone': 'rock', 'silver-powder': 'bug',
+  'spell-tag': 'ghost', 'metal-coat': 'steel', 'dragon-fang': 'dragon',
+  'black-glasses': 'dark', 'silk-scarf': 'normal',
+};
 
 export interface DamageResult {
   damage: number;
@@ -17,6 +27,8 @@ export interface DamageResult {
   weatherMult: number;
   abilityMult: number;
   abilityNote: string;
+  itemMult: number;
+  itemNote: string;
   randomFactor: number;
 }
 
@@ -35,6 +47,7 @@ export function getStagedSpeed(pokemon: BattlePokemon, weather: WeatherType | nu
     ? Math.floor(pokemon.stats.speed * 0.5)
     : pokemon.stats.speed;
   if (tailwind) base *= 2;
+  if ((pokemon.heldItem ?? '') === 'choice-scarf') base = Math.floor(base * 1.5);
   if (weather === 'rain' && pokemon.ability === 'swift-swim') base *= 2;
   if (weather === 'sunny' && pokemon.ability === 'chlorophyll') base *= 2;
   if (weather === 'sandstorm' && pokemon.ability === 'sand-rush') base *= 2;
@@ -53,11 +66,15 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
   const zero: Omit<DamageResult, 'damage' | 'effectiveness'> = {
     isStab: false, isCrit: false,
     atkStatEffective: 0, defStatEffective: 0, atkStage: 0, defStage: 0,
-    stabMult: 1, weatherMult: 1, abilityMult: 1, abilityNote: '', randomFactor: 1,
+    stabMult: 1, weatherMult: 1, abilityMult: 1, abilityNote: '',
+    itemMult: 1, itemNote: '', randomFactor: 1,
   };
   if (move.damageClass === 'status') return { damage: 0, effectiveness: 1, ...zero };
   if (move.category === 'ohko') return { damage: defender.currentHp, effectiveness: 1, ...zero };
   if (!move.power || move.power === 0) return { damage: 0, effectiveness: 1, ...zero };
+
+  const atkItem = attacker.heldItem ?? '';
+  const defItem = defender.heldItem ?? '';
 
   const atkStage = move.damageClass === 'special'
     ? (attacker.stages?.specialAttack ?? 0)
@@ -66,7 +83,8 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
     ? (defender.stages?.specialDefense ?? 0)
     : (defender.stages?.defense ?? 0);
 
-  const critStage = (move as any).critRate ?? 0;
+  // Scope Lens: +1 crit stage
+  const critStage = ((move as any).critRate ?? 0) + (atkItem === 'scope-lens' ? 1 : 0);
   const critChance = critStage <= 0 ? 1/16 : critStage === 1 ? 1/8 : critStage === 2 ? 1/2 : 1;
   const isCrit = Math.random() < critChance;
   const effectiveAtkStage = isCrit ? Math.max(0, atkStage) : atkStage;
@@ -81,6 +99,13 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
       (attacker.ability === 'huge-power' || attacker.ability === 'pure-power')) {
     baseAtk *= 2;
     abilityNote = 'Huge Power (×2 Atk)';
+  }
+
+  // Choice Band / Choice Specs: +50% to attacking stat
+  if (move.damageClass === 'physical' && atkItem === 'choice-band') {
+    baseAtk = Math.floor(baseAtk * 1.5);
+  } else if (move.damageClass === 'special' && atkItem === 'choice-specs') {
+    baseAtk = Math.floor(baseAtk * 1.5);
   }
 
   let atkStat = getStagedStat(baseAtk, effectiveAtkStage);
@@ -103,6 +128,14 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
     defStat = Math.floor(defStat * 1.5);
   }
 
+  // Eviolite: +50% Def and SpDef on defender
+  if (defItem === 'eviolite') {
+    defStat = Math.floor(defStat * 1.5);
+  } else if (move.damageClass === 'special' && defItem === 'assault-vest') {
+    // Assault Vest: +50% SpDef on defender
+    defStat = Math.floor(defStat * 1.5);
+  }
+
   const effectiveness = getTypeEffectiveness(move.type, defender.types);
   if (effectiveness === 0) {
     return { damage: 0, effectiveness: 0, ...zero };
@@ -117,17 +150,43 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
   if (flashFireMult > 1 && !abilityNote) abilityNote = 'Flash Fire (×1.5 Fire)';
   abilityMult = flashFireMult;
 
+  // Item multipliers
+  let itemMult = 1;
+  let itemNote = '';
+  const typeBoostType = TYPE_ITEM_BOOSTS[atkItem];
+  if (typeBoostType && typeBoostType === move.type.toLowerCase()) {
+    itemMult *= 1.2;
+    itemNote = formatItemName(atkItem) + ' (×1.2)';
+  }
+  if (atkItem === 'life-orb') {
+    itemMult *= 1.3;
+    if (!itemNote) itemNote = 'Life Orb (×1.3)';
+  }
+  if (atkItem === 'expert-belt' && effectiveness > 1) {
+    itemMult *= 1.2;
+    if (!itemNote) itemNote = 'Expert Belt (×1.2 SE)';
+  }
+  if (atkItem === 'muscle-band' && move.damageClass === 'physical') {
+    itemMult *= 1.1;
+    if (!itemNote) itemNote = 'Muscle Band (×1.1)';
+  }
+  if (atkItem === 'wise-glasses' && move.damageClass === 'special') {
+    itemMult *= 1.1;
+    if (!itemNote) itemNote = 'Wise Glasses (×1.1)';
+  }
+
   const randomFactor = (Math.floor(Math.random() * 16) + 85) / 100;
   // Screens halve damage; crits pierce screens
   const screenMult = (screenActive && !isCrit) ? 0.5 : 1;
 
   const base = Math.floor((2 * LEVEL / 5 + 2) * move.power * atkStat / defStat);
-  const damage = Math.max(1, Math.floor((Math.floor(base / 50) + 2) * stabMult * effectiveness * critMult * weatherMult * abilityMult * screenMult * randomFactor));
+  const damage = Math.max(1, Math.floor((Math.floor(base / 50) + 2) * stabMult * effectiveness * critMult * weatherMult * abilityMult * itemMult * screenMult * randomFactor));
 
   return {
     damage, effectiveness, isStab, isCrit,
     atkStatEffective: atkStat, defStatEffective: defStat,
-    atkStage, defStage, stabMult, weatherMult, abilityMult, abilityNote, randomFactor,
+    atkStage, defStage, stabMult, weatherMult, abilityMult, abilityNote,
+    itemMult, itemNote, randomFactor,
   };
 }
 
@@ -145,6 +204,7 @@ export interface DamageBreakdown {
   effectiveness: number;
   weatherMult: number;
   abilityNote: string;
+  itemNote: string;
   minDamage: number;
   maxDamage: number;
   critMax: number;
@@ -163,11 +223,14 @@ export function getDamageBreakdown(
       power: 0, category: move.damageClass,
       atkStatRaw: 0, atkStatEffective: 0, defStatRaw: 0, defStatEffective: 0,
       atkStage: 0, defStage: 0, isStab: false, stabMult: 1, effectiveness: 1,
-      weatherMult: 1, abilityNote: 'One-Hit KO move',
+      weatherMult: 1, abilityNote: 'One-Hit KO move', itemNote: '',
       minDamage: defender.currentHp, maxDamage: defender.currentHp, critMax: defender.currentHp,
       defenderMaxHp: defender.stats.hp,
     };
   }
+
+  const atkItem = attacker.heldItem ?? '';
+  const defItem = defender.heldItem ?? '';
 
   const atkStage = move.damageClass === 'special'
     ? (attacker.stages?.specialAttack ?? 0)
@@ -182,6 +245,11 @@ export function getDamageBreakdown(
       (attacker.ability === 'huge-power' || attacker.ability === 'pure-power')) {
     baseAtk *= 2;
     abilityNote = 'Huge Power (×2 Atk)';
+  }
+  if (move.damageClass === 'physical' && atkItem === 'choice-band') {
+    baseAtk = Math.floor(baseAtk * 1.5);
+  } else if (move.damageClass === 'special' && atkItem === 'choice-specs') {
+    baseAtk = Math.floor(baseAtk * 1.5);
   }
 
   let atkStat = getStagedStat(baseAtk, atkStage);
@@ -201,6 +269,11 @@ export function getDamageBreakdown(
       && defender.types.some(t => t.toLowerCase() === 'rock')) {
     defStat = Math.floor(defStat * 1.5);
   }
+  if (defItem === 'eviolite') {
+    defStat = Math.floor(defStat * 1.5);
+  } else if (move.damageClass === 'special' && defItem === 'assault-vest') {
+    defStat = Math.floor(defStat * 1.5);
+  }
 
   const effectiveness = getTypeEffectiveness(move.type, defender.types);
   const isStab = attacker.types.includes(move.type.toLowerCase());
@@ -211,11 +284,23 @@ export function getDamageBreakdown(
     && move.type.toLowerCase() === 'fire') ? 1.5 : 1;
   if (flashFireMult > 1 && !abilityNote) abilityNote = 'Flash Fire (×1.5 Fire)';
 
+  let itemMult = 1;
+  let itemNote = '';
+  const typeBoostType = TYPE_ITEM_BOOSTS[atkItem];
+  if (typeBoostType && typeBoostType === move.type.toLowerCase()) {
+    itemMult *= 1.2;
+    itemNote = formatItemName(atkItem) + ' (×1.2)';
+  }
+  if (atkItem === 'life-orb') { itemMult *= 1.3; if (!itemNote) itemNote = 'Life Orb (×1.3)'; }
+  if (atkItem === 'expert-belt' && effectiveness > 1) { itemMult *= 1.2; if (!itemNote) itemNote = 'Expert Belt (×1.2 SE)'; }
+  if (atkItem === 'muscle-band' && move.damageClass === 'physical') { itemMult *= 1.1; if (!itemNote) itemNote = 'Muscle Band (×1.1)'; }
+  if (atkItem === 'wise-glasses' && move.damageClass === 'special') { itemMult *= 1.1; if (!itemNote) itemNote = 'Wise Glasses (×1.1)'; }
+
   const baseRaw = Math.floor((2 * LEVEL / 5 + 2) * move.power * atkStat / defStat);
   const calc = (rand: number, crit: number) =>
     effectiveness === 0
       ? 0
-      : Math.max(1, Math.floor((Math.floor(baseRaw / 50) + 2) * stabMult * effectiveness * crit * weatherMult * flashFireMult * rand));
+      : Math.max(1, Math.floor((Math.floor(baseRaw / 50) + 2) * stabMult * effectiveness * crit * weatherMult * flashFireMult * itemMult * rand));
 
   return {
     power: move.power,
@@ -231,6 +316,7 @@ export function getDamageBreakdown(
     effectiveness,
     weatherMult,
     abilityNote,
+    itemNote,
     minDamage: calc(0.85, 1),
     maxDamage: calc(1.0, 1),
     critMax: calc(1.0, 1.5),

@@ -3,9 +3,90 @@ import { useTeamStore } from '../store/teamStore';
 import { Team, TeamPokemon, Move, BasePokemon } from '../types';
 import { fetchPokemon, fetchMove, usePokemonSearch, formatName } from '../hooks/usePokeAPI';
 import { TypeBadge } from '../components/TypeBadge';
+import { HELD_ITEMS, formatItemName } from '../data/heldItems';
 
 function formatAbilityName(name: string): string {
   return name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function suggestMoves(moves: Move[], pokemon: BasePokemon): Move[] {
+  const stab = moves.filter(m => m.damageClass !== 'status' && pokemon.types.some(t => t === m.type))
+    .sort((a, b) => (b.power ?? 0) - (a.power ?? 0));
+  const coverage = moves.filter(m => m.damageClass !== 'status' && !pokemon.types.some(t => t === m.type))
+    .sort((a, b) => (b.power ?? 0) - (a.power ?? 0));
+  const utility = moves.filter(m => m.damageClass === 'status')
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const result: Move[] = [];
+  result.push(...stab.slice(0, 2));
+  result.push(...coverage.slice(0, 1));
+  result.push(...utility.slice(0, 1));
+  const used = new Set(result.map(m => m.id));
+  const remaining = [...stab, ...coverage].filter(m => !used.has(m.id));
+  while (result.length < 4 && remaining.length > 0) result.push(remaining.shift()!);
+  return result.slice(0, 4);
+}
+
+function HeldItemSelector({ pokemon, teamId, onDone }: { pokemon: TeamPokemon; teamId: string; onDone: () => void }) {
+  const { updatePokemonHeldItem } = useTeamStore();
+  const [filter, setFilter] = useState('');
+  const filtered = filter.trim()
+    ? HELD_ITEMS.filter(i => i.label.toLowerCase().includes(filter.toLowerCase()) || i.desc.toLowerCase().includes(filter.toLowerCase()))
+    : HELD_ITEMS;
+
+  const pick = (slug: string) => {
+    updatePokemonHeldItem(teamId, pokemon.id, slug);
+    onDone();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        <div className="p-4 border-b border-gray-700 flex items-center gap-3">
+          <img src={pokemon.sprite} alt={pokemon.displayName} className="w-12 h-12 object-contain" />
+          <div>
+            <h3 className="font-bold text-white text-lg">{pokemon.displayName}</h3>
+            <p className="text-xs text-gray-400">Choose a held item</p>
+          </div>
+        </div>
+        <div className="px-3 pt-3 pb-1">
+          <input
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            placeholder="Search items…"
+            className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white placeholder-gray-500 outline-none focus:border-purple-500"
+          />
+        </div>
+        <div className="overflow-y-auto flex-1 p-3 space-y-1">
+          <button
+            onClick={() => pick('')}
+            className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 transition-all
+              ${!pokemon.heldItem ? 'bg-purple-700 border-2 border-purple-400' : 'bg-gray-800 border-2 border-transparent hover:border-gray-600'}`}
+          >
+            <span className="text-sm text-gray-300 italic">— None —</span>
+          </button>
+          {filtered.map(item => {
+            const active = pokemon.heldItem === item.slug;
+            return (
+              <button
+                key={item.slug}
+                onClick={() => pick(item.slug)}
+                className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between gap-3 transition-all
+                  ${active ? 'bg-purple-700 border-2 border-purple-400' : 'bg-gray-800 border-2 border-transparent hover:border-gray-600'}`}
+              >
+                <span className="font-medium text-white text-sm">{item.label}</span>
+                <span className="text-xs text-gray-400 shrink-0 text-right max-w-[55%]">{item.desc}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="p-4 border-t border-gray-700">
+          <button onClick={onDone} className="w-full py-2 rounded-xl bg-gray-700 hover:bg-gray-600 text-white font-bold">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 interface TeamBuilderScreenProps {
@@ -184,9 +265,18 @@ function MoveSelector({ pokemon, teamId, onDone }: { pokemon: TeamPokemon; teamI
         )}
 
         <div className="p-4 border-t border-gray-700 flex gap-3">
-          <button onClick={onDone} className="flex-1 py-2 rounded-xl bg-gray-700 hover:bg-gray-600 text-white font-bold">
+          <button onClick={onDone} className="py-2 px-3 rounded-xl bg-gray-700 hover:bg-gray-600 text-white font-bold">
             Cancel
           </button>
+          {loaded && loadedMoves.length > 0 && (
+            <button
+              onClick={() => setSelected(suggestMoves(loadedMoves, pokemon))}
+              className="py-2 px-3 rounded-xl bg-purple-700 hover:bg-purple-600 text-white font-bold text-sm whitespace-nowrap"
+              title="Auto-fill 2 STAB + 1 coverage + 1 utility"
+            >
+              ✨ Suggest
+            </button>
+          )}
           <button
             onClick={save}
             disabled={selected.length === 0}
@@ -231,6 +321,7 @@ function EditTeam({ team, onBack }: { team: Team; onBack: () => void }) {
   const { addPokemonToTeam, removePokemonFromTeam, updateTeam, reorderPokemon, updatePokemonAbility } = useTeamStore();
   const [query, setQuery] = useState('');
   const [editingMoves, setEditingMoves] = useState<TeamPokemon | null>(null);
+  const [editingItem, setEditingItem] = useState<TeamPokemon | null>(null);
   const [teamName, setTeamName] = useState(team.name);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const { suggestions, selected: found, loading, error, onQueryChange, selectSuggestion, clear } = usePokemonSearch();
@@ -245,7 +336,7 @@ function EditTeam({ team, onBack }: { team: Team; onBack: () => void }) {
   const addToTeam = () => {
     if (!found || currentTeam.pokemon.length >= 6) return;
     if (currentTeam.pokemon.find(p => p.id === found.id)) return;
-    addPokemonToTeam(team.id, { ...found, selectedMoves: [], ability: found.availableAbilities[0] ?? '' });
+    addPokemonToTeam(team.id, { ...found, selectedMoves: [], ability: found.availableAbilities[0] ?? '', heldItem: '' });
     clear();
     setQuery('');
   };
@@ -257,6 +348,13 @@ function EditTeam({ team, onBack }: { team: Team; onBack: () => void }) {
           pokemon={editingMoves}
           teamId={team.id}
           onDone={() => setEditingMoves(null)}
+        />
+      )}
+      {editingItem && (
+        <HeldItemSelector
+          pokemon={editingItem}
+          teamId={team.id}
+          onDone={() => setEditingItem(null)}
         />
       )}
 
@@ -368,18 +466,30 @@ function EditTeam({ team, onBack }: { team: Team; onBack: () => void }) {
                     </button>
                   </div>
                 )}
-                <div className="text-xs text-gray-500 mt-0.5">
+                <div className="flex items-center gap-1 mt-0.5">
+                  <span className="text-[9px] text-gray-500">Item:</span>
+                  <span className="text-[9px] text-purple-300">{formatItemName(p.heldItem ?? '')}</span>
+                </div>
+                <div className="text-xs text-gray-500 mt-0.5 truncate">
                   {p.selectedMoves.length > 0
                     ? p.selectedMoves.map(m => m.displayName).join(', ')
                     : 'No moves selected'}
                 </div>
               </div>
-              <button
-                onClick={() => setEditingMoves(p)}
-                className="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 rounded-lg text-xs font-bold shrink-0"
-              >
-                Moves
-              </button>
+              <div className="flex flex-col gap-1 shrink-0">
+                <button
+                  onClick={() => setEditingMoves(p)}
+                  className="px-3 py-1 bg-blue-700 hover:bg-blue-600 rounded-lg text-xs font-bold"
+                >
+                  Moves
+                </button>
+                <button
+                  onClick={() => setEditingItem(currentTeam.pokemon.find(pk => pk.id === p.id) ?? p)}
+                  className="px-3 py-1 bg-purple-700 hover:bg-purple-600 rounded-lg text-xs font-bold"
+                >
+                  {p.heldItem ? '✦ Item' : 'Item'}
+                </button>
+              </div>
               <button
                 onClick={() => removePokemonFromTeam(team.id, p.id)}
                 className="p-1.5 bg-gray-700 hover:bg-red-700 rounded-lg text-sm"

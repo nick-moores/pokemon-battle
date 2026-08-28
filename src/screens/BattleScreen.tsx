@@ -10,6 +10,7 @@ import { TypeBadge } from '../components/TypeBadge';
 import { BattleLog, BattleTextBox } from '../components/BattleLog';
 import { getDamageBreakdown, DamageBreakdown, getStagedStat } from '../utils/damage';
 import { TYPE_COLORS } from '../data/typeColors';
+import { formatItemName } from '../data/heldItems';
 
 function SaveTeamCard({ battleTeam, onSave }: { battleTeam: BattleTeam; onSave: () => void }) {
   const [saved, setSaved] = useState(false);
@@ -64,7 +65,8 @@ function PokemonSide({
   const shakeClass = shaking ? 'pokemon-shake' : '';
   const faintClass = fainting ? 'pokemon-faint' : '';
   const slideClass = slidingIn ? (isTop ? 'pokemon-slide-in-right' : 'pokemon-slide-in-left') : '';
-  const wrapperAnim = [lungeClass, shakeClass, faintClass, slideClass].filter(Boolean).join(' ');
+  const idleClass = (!lunging && !shaking && !fainting && !slidingIn && !fainted) ? 'pokemon-idle' : '';
+  const wrapperAnim = [lungeClass, shakeClass, faintClass, slideClass, idleClass].filter(Boolean).join(' ');
   const frozenClass = !fainting && !shaking && pokemon.status === 'freeze' ? 'pokemon-frozen' : '';
 
   return (
@@ -95,6 +97,11 @@ function PokemonSide({
             <span className="inline-block text-[9px] font-bold px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: '#FF88AA' }}>
               CNF
             </span>
+          )}
+          {(pokemon.heldItem ?? '') !== '' && (
+            pokemon.heldItemConsumed
+              ? <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800/60 text-gray-500 line-through">{formatItemName(pokemon.heldItem ?? '')}</span>
+              : <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-900/60 text-purple-200 ring-1 ring-purple-700">{formatItemName(pokemon.heldItem ?? '')}</span>
           )}
         </div>
         <div className={`flex gap-1 mb-1 ${isTop ? 'justify-end' : 'justify-start'}`}>
@@ -313,6 +320,9 @@ function DamageForecast({ breakdown, moveName }: { breakdown: DamageBreakdown; m
       )}
       {breakdown.abilityNote && (
         <div className="text-blue-300">⚡ {breakdown.abilityNote}</div>
+      )}
+      {breakdown.itemNote && (
+        <div className="text-purple-300">✦ {breakdown.itemNote}</div>
       )}
       <div className="border-t border-gray-700 pt-2 flex items-center justify-between">
         <div>
@@ -630,49 +640,53 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
       </div>
 
       <div className="flex-1 p-4 space-y-4 max-w-lg mx-auto w-full">
-        <PokemonSide
-          team={team2} isTop={true} showBack={false}
-          lunging={anim.t2Lunge} flashing={anim.t2Flash}
-          shaking={anim.t2Shake} fainting={anim.t2Faint} slidingIn={anim.t2SlideIn}
-        />
-
-        <div className="relative text-center py-1">
-          {/* Weather overlay */}
+        {/* Weather overlay spans the whole battlefield */}
+        <div className="relative rounded-2xl overflow-hidden">
           {weather && (
-            <div className={`absolute inset-0 rounded-xl overflow-hidden ${
+            <div className={`absolute inset-0 z-0 pointer-events-none ${
               weather === 'rain' ? 'weather-rain' :
               weather === 'hail' ? 'weather-hail' :
               weather === 'sandstorm' ? 'weather-sand' :
               'weather-sun'
             }`} />
           )}
-          {/* Move name banner */}
-          {moveBanner && (
-            <div className="move-banner absolute inset-x-0 -top-6 flex justify-center z-10">
-              <span className="bg-gray-900/90 border border-gray-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">
-                {moveBanner}
-              </span>
+          <div className="relative z-10 space-y-4 py-2">
+            <PokemonSide
+              team={team2} isTop={true} showBack={false}
+              lunging={anim.t2Lunge} flashing={anim.t2Flash}
+              shaking={anim.t2Shake} fainting={anim.t2Faint} slidingIn={anim.t2SlideIn}
+            />
+
+            <div className="relative text-center py-1">
+              {/* Move name banner */}
+              {moveBanner && (
+                <div className="move-banner absolute inset-x-0 -top-6 flex justify-center z-10">
+                  <span className="bg-gray-900/90 border border-gray-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">
+                    {moveBanner}
+                  </span>
+                </div>
+              )}
+              <div className="inline-flex items-center gap-2 bg-gray-800 rounded-full px-4 py-1.5 relative z-10">
+                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-sm font-bold text-gray-200">
+                  {isTeam1Turn
+                    ? `${team1.name}'s turn — pick a move`
+                    : isTeam2Turn
+                    ? `${team2.name}'s turn — pick a move`
+                    : isSwitchTeam1
+                    ? `${team1.name} — pick your next Pokemon`
+                    : `${team2.name} — pick your next Pokemon`}
+                </span>
+              </div>
             </div>
-          )}
-          <div className="inline-flex items-center gap-2 bg-gray-800 rounded-full px-4 py-1.5 relative z-10">
-            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-sm font-bold text-gray-200">
-              {isTeam1Turn
-                ? `${team1.name}'s turn — pick a move`
-                : isTeam2Turn
-                ? `${team2.name}'s turn — pick a move`
-                : isSwitchTeam1
-                ? `${team1.name} — pick your next Pokemon`
-                : `${team2.name} — pick your next Pokemon`}
-            </span>
+
+            <PokemonSide
+              team={team1} isTop={false} showBack={true}
+              lunging={anim.t1Lunge} flashing={anim.t1Flash}
+              shaking={anim.t1Shake} fainting={anim.t1Faint} slidingIn={anim.t1SlideIn}
+            />
           </div>
         </div>
-
-        <PokemonSide
-          team={team1} isTop={false} showBack={true}
-          lunging={anim.t1Lunge} flashing={anim.t1Flash}
-          shaking={anim.t1Shake} fainting={anim.t1Faint} slidingIn={anim.t1SlideIn}
-        />
 
         <BattleTextBox entries={log} />
 
@@ -766,7 +780,7 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
                   onClick={() => selectMove(isTeam1Turn ? 1 : 2, {
                     id: -1, name: 'struggle', displayName: 'Struggle',
                     type: 'normal', power: 50, accuracy: null, critRate: 0, pp: 10, damageClass: 'physical', category: '',
-                    effectEntry: 'Deals recoil damage.', ailment: 'none', ailmentChance: 0, statChanges: [],
+                    effectEntry: 'Deals recoil damage.', ailment: 'none', ailmentChance: 0, statChanges: [], drain: 0,
                   })}
                   className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-xl font-bold text-sm"
                 >
@@ -779,7 +793,7 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
               const struggle: Move = {
                 id: -1, name: 'struggle', displayName: 'Struggle',
                 type: 'normal', power: 50, accuracy: null, critRate: 0, pp: 1, damageClass: 'physical', category: '',
-                effectEntry: 'Deals recoil damage.', ailment: 'none', ailmentChance: 0, statChanges: [],
+                effectEntry: 'Deals recoil damage.', ailment: 'none', ailmentChance: 0, statChanges: [], drain: 0,
               };
               return allOutOfPP ? (
                 <div className="bg-gray-800 rounded-2xl p-4 text-center text-gray-400">

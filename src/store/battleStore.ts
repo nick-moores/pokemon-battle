@@ -78,6 +78,7 @@ function initBattlePokemon(p: Team['pokemon'][0]): BattlePokemon {
   const battleStats = toLevel50Stats(p.stats);
   return {
     ...p,
+    heldItem: p.heldItem ?? '',
     stats: battleStats,
     ability: p.ability || (p.availableAbilities?.[0] ?? ''),
     currentHp: battleStats.hp,
@@ -94,6 +95,9 @@ function initBattlePokemon(p: Team['pokemon'][0]): BattlePokemon {
     substituteHp: null,
     lockedMove: null,
     lockedTurns: 0,
+    heldItemConsumed: false,
+    choiceLockedMove: null,
+    leeched: false,
   };
 }
 
@@ -272,10 +276,17 @@ function executeMove(
   weather: WeatherType | null,
   screenActive = false,
 ): { atk: BattlePokemon; def: BattlePokemon; newWeather?: WeatherType; setTailwind?: boolean; setLightScreen?: boolean; setReflect?: boolean; setTrickRoom?: boolean; futureSight?: FutureSightState } {
-  logs.push(log(`${attackerName} used ${move.displayName}!`, 'move'));
-
   let atk = attacker;
   let def = defender;
+
+  // Choice lock: if the pokemon has a choice-locked move, it must use that move
+  if (atk.choiceLockedMove && atk.choiceLockedMove.id !== move.id) {
+    logs.push(log(`${attackerName} used ${move.displayName}!`, 'move'));
+    logs.push(log(`${atk.displayName} is locked into ${atk.choiceLockedMove.displayName}!`, 'status'));
+    return { atk, def };
+  }
+
+  logs.push(log(`${attackerName} used ${move.displayName}!`, 'move'));
 
   // Accuracy check — move.accuracy is null for always-hit moves (Swift, Aerial Ace, etc.)
   // Old saved moves without the field also always hit (backward compatible)
@@ -294,6 +305,12 @@ function executeMove(
   }
 
   if (move.damageClass === 'status') {
+    // Assault Vest prevents status moves
+    if ((atk.heldItem ?? '') === 'assault-vest') {
+      logs.push(log(`${atk.displayName} can't use status moves with Assault Vest!`, 'info'));
+      return { atk, def };
+    }
+
     // Substitute
     if (move.name === 'substitute') {
       if (atk.substituteHp !== null) {
@@ -389,6 +406,17 @@ function executeMove(
         } else {
           logs.push(log(`But it failed!`, 'info'));
         }
+      }
+    } else if (ailment === 'leech-seed') {
+      if (def.substituteHp !== null) {
+        logs.push(log(`${def.displayName}'s substitute blocked the move!`, 'info'));
+      } else if (def.types.includes('grass')) {
+        logs.push(log(`It doesn't affect ${def.displayName}!`, 'effectiveness'));
+      } else if (def.leeched) {
+        logs.push(log(`But ${def.displayName} is already seeded!`, 'info'));
+      } else {
+        def = { ...def, leeched: true };
+        logs.push(log(`${def.displayName} was seeded!`, 'status'));
       }
     } else if (ailment === 'confusion') {
       if (def.substituteHp !== null) {
@@ -490,7 +518,16 @@ function executeMove(
     return { atk, def };
   }
 
+  const defHpBeforeDamage = def.currentHp;
   def = applyDamage(def, damage);
+
+  // Focus Sash: survive any OHKO at full HP
+  if (def.isFainted && !(def.heldItemConsumed ?? false) && (def.heldItem ?? '') === 'focus-sash' &&
+      defHpBeforeDamage >= def.stats.hp) {
+    def = { ...def, currentHp: 1, isFainted: false, heldItemConsumed: true };
+    logs.push(log(`${def.displayName} hung on with Focus Sash!`, 'status'));
+  }
+
   logs.push(log(`${def.displayName} took ${damage} damage!`, 'damage', calcRecord));
   if (def.isFainted) logs.push(log(`${def.displayName} fainted!`, 'faint'));
 
@@ -510,6 +547,20 @@ function executeMove(
     }
   }
 
+  // Lum Berry: cure any status condition
+  if (!def.isFainted && !(def.heldItemConsumed ?? false) && (def.heldItem ?? '') === 'lum-berry' && def.status !== 'none') {
+    logs.push(log(`${def.displayName}'s Lum Berry cured its ${def.status}!`, 'status'));
+    def = { ...def, status: 'none', heldItemConsumed: true };
+  }
+
+  // Sitrus Berry: restore 1/4 HP when below 50%
+  if (!def.isFainted && !(def.heldItemConsumed ?? false) && (def.heldItem ?? '') === 'sitrus-berry' &&
+      def.currentHp < Math.floor(def.stats.hp / 2)) {
+    const heal = Math.max(1, Math.floor(def.stats.hp / 4));
+    def = { ...def, currentHp: Math.min(def.stats.hp, def.currentHp + heal), heldItemConsumed: true };
+    logs.push(log(`${def.displayName} restored HP with Sitrus Berry!`, 'status'));
+  }
+
   // On-contact ability triggers (Flame Body, Poison Point) — defender hits back
   if (!atk.isFainted && !def.isFainted && move.damageClass === 'physical' && damage > 0) {
     if (def.ability === 'flame-body' && atk.status === 'none' && Math.random() < 0.3) {
@@ -521,7 +572,44 @@ function executeMove(
     }
   }
 
-  // Self stat changes from damage moves (Close Combat, Draco Meteor, etc.) always apply
+  // Rocky Helmet: deal 1/6 max HP to physical attacker
+  if (damage > 0 && move.damageClass === 'physical' && (def.heldItem ?? '') === 'rocky-helmet' && !atk.isFainted) {
+    const helmetDmg = Math.max(1, Math.floor(def.stats.hp / 6));
+    atk = applyDamage(atk, helmetDmg);
+    logs.push(log(`${def.displayName}'s Rocky Helmet hurt ${atk.displayName}!`, 'damage'));
+    if (atk.isFainted) logs.push(log(`${atk.displayName} fainted!`, 'faint'));
+  }
+
+  // Shell Bell: restore 1/8 of damage dealt to attacker
+  if (damage > 0 && (atk.heldItem ?? '') === 'shell-bell' && !atk.isFainted && atk.currentHp < atk.stats.hp) {
+    const shellHeal = Math.max(1, Math.floor(damage / 8));
+    atk = { ...atk, currentHp: Math.min(atk.stats.hp, atk.currentHp + shellHeal) };
+    logs.push(log(`${atk.displayName} restored HP with Shell Bell!`, 'status'));
+  }
+
+  // Life Orb: lose 10% max HP
+  if (damage > 0 && (atk.heldItem ?? '') === 'life-orb' && !atk.isFainted) {
+    const orbDmg = Math.max(1, Math.floor(atk.stats.hp / 10));
+    atk = applyDamage(atk, orbDmg);
+    logs.push(log(`${atk.displayName} lost HP due to Life Orb!`, 'damage'));
+    if (atk.isFainted) logs.push(log(`${atk.displayName} fainted!`, 'faint'));
+  }
+
+  // Choice lock: lock the attacker to this move if holding a Choice item
+  const atkItemHeld = atk.heldItem ?? '';
+  if (damage > 0 && (atkItemHeld === 'choice-band' || atkItemHeld === 'choice-specs' || atkItemHeld === 'choice-scarf') &&
+      !(atk.choiceLockedMove)) {
+    atk = { ...atk, choiceLockedMove: move };
+  }
+
+  // Drain moves (Drain Punch, Giga Drain, etc.) — heal attacker by move.drain% of damage dealt
+  if (damage > 0 && (move.drain ?? 0) > 0 && !atk.isFainted && atk.currentHp < atk.stats.hp) {
+    const drainHeal = Math.max(1, Math.floor(damage * move.drain / 100));
+    atk = { ...atk, currentHp: Math.min(atk.stats.hp, atk.currentHp + drainHeal) };
+    logs.push(log(`${atk.displayName} drained HP!`, 'status'));
+  }
+
+  // Self stat changes from damage moves (Close Combat, Draco Meteor, Torch Song, etc.) always apply
   const selfStatChanges = (move.statChanges ?? []).filter(sc => sc.target === 'user');
   if (selfStatChanges.length) atk = applyStatChanges(atk, selfStatChanges, logs);
 
@@ -544,7 +632,7 @@ function applyVoluntarySwitch(
   logs.push(log(`${switchingTeam.name} sent out ${incoming.displayName}!`, 'switch'));
   const resetArr = switchingTeam.pokemon.map((p, i) => {
     if (i === pokemonIndex) return { ...p, stages: { ...ZERO_STAGES } };
-    if (i === outIdx) return { ...p, chargingMove: null, isInvulnerable: false, substituteHp: null, lockedMove: null, lockedTurns: 0 };
+    if (i === outIdx) return { ...p, chargingMove: null, isInvulnerable: false, substituteHp: null, lockedMove: null, lockedTurns: 0, choiceLockedMove: null };
     return p;
   });
   let team = { ...switchingTeam, activeIndex: pokemonIndex, pokemon: resetArr };
@@ -631,8 +719,8 @@ function runOneTurn(
   const result = executeMove(atkPokemon, defPokemon, moveToUse, teamLabel, logs, weather, screenActive);
   if (result.newWeather !== undefined) { weather = result.newWeather; weatherTurnsLeft = 5; }
   if (result.setTailwind) atk = { ...atk, tailwindTurns: 3 };
-  if (result.setLightScreen) atk = { ...atk, lightScreenTurns: 5 };
-  if (result.setReflect) atk = { ...atk, reflectTurns: 5 };
+  if (result.setLightScreen) atk = { ...atk, lightScreenTurns: (result.atk.heldItem ?? '') === 'light-clay' ? 8 : 5 };
+  if (result.setReflect) atk = { ...atk, reflectTurns: (result.atk.heldItem ?? '') === 'light-clay' ? 8 : 5 };
   if (result.setTrickRoom) trickRoomTurns = trickRoomTurns > 0 ? 0 : 5;
   if (result.futureSight) atk = { ...atk, futureSight: result.futureSight };
 
@@ -674,6 +762,36 @@ function applyEndOfTurnAbilities(team: BattleTeam, weather: WeatherType | null, 
       logs.push(log(`${p.displayName} restored a little HP using Rain Dish!`, 'status'));
     }
   }
+
+  // Held item end-of-turn effects
+  const heldItem = p.heldItem ?? '';
+  if (heldItem === 'leftovers' && p.currentHp < p.stats.hp) {
+    const heal = Math.max(1, Math.floor(p.stats.hp / 16));
+    p = { ...p, currentHp: Math.min(p.stats.hp, p.currentHp + heal) };
+    logs.push(log(`${p.displayName} restored HP with Leftovers!`, 'status'));
+  }
+  if (heldItem === 'black-sludge') {
+    const isPoisonType = p.types.includes('poison');
+    if (isPoisonType && p.currentHp < p.stats.hp) {
+      const heal = Math.max(1, Math.floor(p.stats.hp / 16));
+      p = { ...p, currentHp: Math.min(p.stats.hp, p.currentHp + heal) };
+      logs.push(log(`${p.displayName} restored HP with Black Sludge!`, 'status'));
+    } else if (!isPoisonType) {
+      const dmg = Math.max(1, Math.floor(p.stats.hp / 8));
+      p = applyDamage(p, dmg);
+      logs.push(log(`${p.displayName} was hurt by Black Sludge!`, 'damage'));
+      if (p.isFainted) logs.push(log(`${p.displayName} fainted!`, 'faint'));
+    }
+  }
+  if (heldItem === 'flame-orb' && p.status === 'none' && !(p.heldItemConsumed ?? false) && !p.isFainted) {
+    p = { ...applyStatus(p, 'burn'), heldItemConsumed: true };
+    logs.push(log(`${p.displayName} was burned by Flame Orb!`, 'status'));
+  }
+  if (heldItem === 'toxic-orb' && p.status === 'none' && !(p.heldItemConsumed ?? false) && !p.isFainted) {
+    p = { ...applyStatus(p, 'badly-poisoned'), heldItemConsumed: true };
+    logs.push(log(`${p.displayName} was badly poisoned by Toxic Orb!`, 'status'));
+  }
+
   const newPokemon = [...team.pokemon];
   newPokemon[idx] = p;
   return { ...team, pokemon: newPokemon };
@@ -837,9 +955,33 @@ export const useBattleStore = create<BattleStore>()(
           }
         }
 
-        // End-of-turn abilities (Speed Boost, Rain Dish, etc.)
+        // End-of-turn abilities (Speed Boost, Rain Dish, held items, etc.)
         t1 = applyEndOfTurnAbilities(t1, currentWeather, logs);
         t2 = applyEndOfTurnAbilities(t2, currentWeather, logs);
+
+        // Leech Seed drain — 1/8 max HP from leeched pokemon; heals opponent's active
+        const applyLeechSeed = (seedTeam: BattleTeam, healTeam: BattleTeam): { seeded: BattleTeam; healer: BattleTeam } => {
+          const idx = seedTeam.activeIndex;
+          let p = seedTeam.pokemon[idx];
+          if (!p.isFainted && (p.leeched ?? false)) {
+            const drain = Math.max(1, Math.floor(p.stats.hp / 8));
+            p = applyDamage(p, drain);
+            logs.push(log(`${p.displayName} had its energy drained by Leech Seed!`, 'damage'));
+            if (p.isFainted) logs.push(log(`${p.displayName} fainted!`, 'faint'));
+            const healIdx = healTeam.activeIndex;
+            let healer = healTeam.pokemon[healIdx];
+            if (!healer.isFainted && healer.currentHp < healer.stats.hp) {
+              healer = { ...healer, currentHp: Math.min(healer.stats.hp, healer.currentHp + drain) };
+              logs.push(log(`${healer.displayName} absorbed the energy!`, 'status'));
+            }
+            const sp = [...seedTeam.pokemon]; sp[idx] = p;
+            const hp = [...healTeam.pokemon]; hp[healIdx] = healer;
+            return { seeded: { ...seedTeam, pokemon: sp }, healer: { ...healTeam, pokemon: hp } };
+          }
+          return { seeded: seedTeam, healer: healTeam };
+        };
+        const ls1 = applyLeechSeed(t1, t2); t1 = ls1.seeded; t2 = ls1.healer;
+        const ls2 = applyLeechSeed(t2, t1); t2 = ls2.seeded; t1 = ls2.healer;
 
         // Tailwind countdown
         if (t1.tailwindTurns > 0) {
@@ -1048,6 +1190,30 @@ export const useBattleStore = create<BattleStore>()(
         }
         t1 = applyEndOfTurnAbilities(t1, currentWeather, logs);
         t2 = applyEndOfTurnAbilities(t2, currentWeather, logs);
+        {
+          const applyLeechSeed2 = (seedTeam: BattleTeam, healTeam: BattleTeam): { seeded: BattleTeam; healer: BattleTeam } => {
+            const idx = seedTeam.activeIndex;
+            let p = seedTeam.pokemon[idx];
+            if (!p.isFainted && (p.leeched ?? false)) {
+              const drain = Math.max(1, Math.floor(p.stats.hp / 8));
+              p = applyDamage(p, drain);
+              logs.push(log(`${p.displayName} had its energy drained by Leech Seed!`, 'damage'));
+              if (p.isFainted) logs.push(log(`${p.displayName} fainted!`, 'faint'));
+              const healIdx = healTeam.activeIndex;
+              let healer = healTeam.pokemon[healIdx];
+              if (!healer.isFainted && healer.currentHp < healer.stats.hp) {
+                healer = { ...healer, currentHp: Math.min(healer.stats.hp, healer.currentHp + drain) };
+                logs.push(log(`${healer.displayName} absorbed the energy!`, 'status'));
+              }
+              const sp = [...seedTeam.pokemon]; sp[idx] = p;
+              const hp = [...healTeam.pokemon]; hp[healIdx] = healer;
+              return { seeded: { ...seedTeam, pokemon: sp }, healer: { ...healTeam, pokemon: hp } };
+            }
+            return { seeded: seedTeam, healer: healTeam };
+          };
+          const ls1 = applyLeechSeed2(t1, t2); t1 = ls1.seeded; t2 = ls1.healer;
+          const ls2 = applyLeechSeed2(t2, t1); t2 = ls2.seeded; t1 = ls2.healer;
+        }
         if (t1.tailwindTurns > 0) { t1 = { ...t1, tailwindTurns: t1.tailwindTurns - 1 }; if (t1.tailwindTurns === 0) logs.push(log(`${t1.name}'s Tailwind faded!`, 'status')); }
         if (t2.tailwindTurns > 0) { t2 = { ...t2, tailwindTurns: t2.tailwindTurns - 1 }; if (t2.tailwindTurns === 0) logs.push(log(`${t2.name}'s Tailwind faded!`, 'status')); }
         if (t1.lightScreenTurns > 0) { t1 = { ...t1, lightScreenTurns: t1.lightScreenTurns - 1 }; if (t1.lightScreenTurns === 0) logs.push(log(`${t1.name}'s Light Screen faded!`, 'status')); }
@@ -1089,7 +1255,7 @@ export const useBattleStore = create<BattleStore>()(
           const outIdx1 = battle.team1.activeIndex;
           const resetPokemon = battle.team1.pokemon.map((p, i) => {
             if (i === pokemonIndex) return { ...p, stages: { ...ZERO_STAGES } };
-            if (i === outIdx1) return { ...p, chargingMove: null, isInvulnerable: false, substituteHp: null, lockedMove: null, lockedTurns: 0 };
+            if (i === outIdx1) return { ...p, chargingMove: null, isInvulnerable: false, substituteHp: null, lockedMove: null, lockedTurns: 0, choiceLockedMove: null };
             return p;
           });
           let t1 = { ...battle.team1, activeIndex: pokemonIndex, pokemon: resetPokemon };
@@ -1110,7 +1276,7 @@ export const useBattleStore = create<BattleStore>()(
           const outIdx2 = battle.team2.activeIndex;
           const resetPokemon = battle.team2.pokemon.map((p, i) => {
             if (i === pokemonIndex) return { ...p, stages: { ...ZERO_STAGES } };
-            if (i === outIdx2) return { ...p, chargingMove: null, isInvulnerable: false, substituteHp: null, lockedMove: null, lockedTurns: 0 };
+            if (i === outIdx2) return { ...p, chargingMove: null, isInvulnerable: false, substituteHp: null, lockedMove: null, lockedTurns: 0, choiceLockedMove: null };
             return p;
           });
           let t2 = { ...battle.team2, activeIndex: pokemonIndex, pokemon: resetPokemon };

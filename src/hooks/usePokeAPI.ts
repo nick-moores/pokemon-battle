@@ -126,6 +126,9 @@ export async function fetchMove(name: string): Promise<Move | null> {
       statChanges = mapChanges(data.stat_changes ?? [], 'opponent');
     } else if (metaCategory === 'damage-raise') {
       statChanges = mapChanges(data.stat_changes ?? [], 'user');
+    } else if (isDamageMove && metaCategory === '' && (data.stat_changes ?? []).length > 0) {
+      // Moves like Torch Song where meta is null but stat_changes are present — treat as self-buff
+      statChanges = mapChanges(data.stat_changes ?? [], 'user');
     }
 
     const move: Move = {
@@ -143,6 +146,7 @@ export async function fetchMove(name: string): Promise<Move | null> {
       ailmentChance: data.meta?.ailment_chance ?? 0,
       category: data.meta?.category?.name ?? '',
       statChanges,
+      drain: data.meta?.drain ?? 0,
     };
     moveCache.set(name, move);
     return move;

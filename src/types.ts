@@ -28,6 +28,7 @@ export interface Move {
   ailment: string;
   ailmentChance: number;
   statChanges: StatChange[];
+  drain: number;  // % of damage restored to attacker (0 = no drain); from PokeAPI meta.drain
 }
 
 export interface Stages {
@@ -57,6 +58,7 @@ export interface BasePokemon {
 export interface TeamPokemon extends BasePokemon {
   selectedMoves: Move[];
   ability: string;
+  heldItem?: string;   // PokeAPI slug, e.g. 'leftovers'; undefined/'' = none
 }
 
 export interface Team {
@@ -93,6 +95,9 @@ export interface BattlePokemon extends TeamPokemon {
   substituteHp: number | null;  // null = no sub; number = sub's remaining HP
   lockedMove: Move | null;      // Outrage/Thrash/Petal Dance lock-in
   lockedTurns: number;          // additional turns remaining (0 = move ended this turn)
+  heldItemConsumed?: boolean;   // one-use items fired (Berries, Focus Sash, etc.)
+  choiceLockedMove?: Move | null; // Choice Band/Specs/Scarf move lock
+  leeched?: boolean;            // Leech Seed — drains HP each end of turn to the opponent
 }
 
 export interface FutureSightState {

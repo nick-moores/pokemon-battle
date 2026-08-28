@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
 * {
   box-sizing: border-box;
@@ -18,6 +18,13 @@ img {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
+
+/* Idle sprite bob — gentle float when no other animation is active */
+@keyframes pokemon-idle {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-6px); }
+}
+.pokemon-idle { animation: pokemon-idle 1.8s ease-in-out infinite; }
 
 /* Battle sprite animations */
 @keyframes pokemon-lunge-up {
