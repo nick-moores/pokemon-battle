@@ -107,6 +107,8 @@ export interface BattleTeam {
   pokemon: BattlePokemon[];
   activeIndex: number;
   tailwindTurns: number;           // turns remaining (0 = not active)
+  lightScreenTurns: number;        // turns remaining (0 = not active)
+  reflectTurns: number;            // turns remaining (0 = not active)
   futureSight: FutureSightState | null;
 }
 
@@ -162,6 +164,7 @@ export interface BattleState {
   winner: 'team1' | 'team2' | null;
   weather: WeatherType | null;
   weatherTurnsLeft: number;
+  trickRoomTurns: number;          // turns remaining (0 = not active)
 }
 
 export interface BattleRecord {

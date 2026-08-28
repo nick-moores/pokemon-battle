@@ -133,6 +133,8 @@ function initBattleTeam(team: Team): BattleTeam {
     pokemon: team.pokemon.map(initBattlePokemon),
     activeIndex: 0,
     tailwindTurns: 0,
+    lightScreenTurns: 0,
+    reflectTurns: 0,
     futureSight: null,
   };
 }
@@ -268,7 +270,8 @@ function executeMove(
   attackerName: string,
   logs: BattleLogEntry[],
   weather: WeatherType | null,
-): { atk: BattlePokemon; def: BattlePokemon; newWeather?: WeatherType; setTailwind?: boolean; futureSight?: FutureSightState } {
+  screenActive = false,
+): { atk: BattlePokemon; def: BattlePokemon; newWeather?: WeatherType; setTailwind?: boolean; setLightScreen?: boolean; setReflect?: boolean; setTrickRoom?: boolean; futureSight?: FutureSightState } {
   logs.push(log(`${attackerName} used ${move.displayName}!`, 'move'));
 
   let atk = attacker;
@@ -311,6 +314,22 @@ function executeMove(
     if (move.name === 'tailwind') {
       logs.push(log(`${atk.displayName} whipped up a Tailwind!`, 'status'));
       return { atk, def, setTailwind: true };
+    }
+
+    // Screens: halve damage for the user's team for 5 turns
+    if (move.name === 'light-screen') {
+      logs.push(log(`${atk.displayName} put up a Light Screen!`, 'status'));
+      return { atk, def, setLightScreen: true };
+    }
+    if (move.name === 'reflect') {
+      logs.push(log(`${atk.displayName} put up a Reflect!`, 'status'));
+      return { atk, def, setReflect: true };
+    }
+
+    // Trick Room: reverses speed order for 5 turns (using it again cancels it)
+    if (move.name === 'trick-room') {
+      logs.push(log(`${atk.displayName} twisted the dimensions!`, 'status'));
+      return { atk, def, setTrickRoom: true };
     }
 
     // Future Sight / Doom Desire: delayed attack that fires after 2 turns
@@ -422,7 +441,7 @@ function executeMove(
     return { atk, def };
   }
 
-  const calcResult = calculateDamage(atk, def, move, weather);
+  const calcResult = calculateDamage(atk, def, move, weather, screenActive);
   const { damage, effectiveness, isCrit } = calcResult;
 
   if (effectiveness === 0) {
@@ -549,12 +568,13 @@ function runOneTurn(
   logs: BattleLogEntry[],
   weather: WeatherType | null,
   weatherTurnsLeft: number,
-): { atk: BattleTeam; def: BattleTeam; weather: WeatherType | null; weatherTurnsLeft: number } {
+  trickRoomTurns: number = 0,
+): { atk: BattleTeam; def: BattleTeam; weather: WeatherType | null; weatherTurnsLeft: number; trickRoomTurns: number } {
   const atkIdx = atk.activeIndex;
   const defIdx = def.activeIndex;
 
   let atkPokemon = atk.pokemon[atkIdx];
-  if (atkPokemon.isFainted) return { atk, def, weather, weatherTurnsLeft };
+  if (atkPokemon.isFainted) return { atk, def, weather, weatherTurnsLeft, trickRoomTurns };
 
   const isLockedIn = !!atkPokemon.lockedMove;
   const moveToUse = atkPokemon.lockedMove ?? atkPokemon.chargingMove ?? atkMove;
@@ -566,7 +586,7 @@ function runOneTurn(
   updatedAtkPokemon[atkIdx] = atkPokemon;
   atk = { ...atk, pokemon: updatedAtkPokemon };
 
-  if (!canMove || atkPokemon.isFainted) return { atk, def, weather, weatherTurnsLeft };
+  if (!canMove || atkPokemon.isFainted) return { atk, def, weather, weatherTurnsLeft, trickRoomTurns };
 
   if (!wasCharging && !isLockedIn) {
     const ppIdx = atkPokemon.selectedMoves.findIndex(m => m.id === moveToUse.id);
@@ -590,14 +610,14 @@ function runOneTurn(
     if (moveToUse.name === 'skull-bash') charged = applyStatChanges(charged, [{ stat: 'defense', change: 1 }], logs);
     if (moveToUse.name === 'meteor-beam') charged = applyStatChanges(charged, [{ stat: 'specialAttack', change: 1 }], logs);
     const arr = [...atk.pokemon]; arr[atkIdx] = charged;
-    return { atk: { ...atk, pokemon: arr }, def, weather, weatherTurnsLeft };
+    return { atk: { ...atk, pokemon: arr }, def, weather, weatherTurnsLeft, trickRoomTurns };
   }
 
   if (defPokemon.isInvulnerable) {
     const chargeName = defPokemon.chargingMove?.name ?? '';
     const loc = (chargeName === 'dig' || chargeName === 'dive') ? 'underground' : 'in the air';
     logs.push(log(`The attack missed! ${defPokemon.displayName} is ${loc}!`, 'info'));
-    return { atk, def, weather, weatherTurnsLeft };
+    return { atk, def, weather, weatherTurnsLeft, trickRoomTurns };
   }
 
   if (wasCharging) {
@@ -606,9 +626,14 @@ function runOneTurn(
     atk = { ...atk, pokemon: arr };
   }
 
-  const result = executeMove(atkPokemon, defPokemon, moveToUse, teamLabel, logs, weather);
+  const isSpecial = moveToUse.damageClass === 'special';
+  const screenActive = isSpecial ? def.lightScreenTurns > 0 : def.reflectTurns > 0;
+  const result = executeMove(atkPokemon, defPokemon, moveToUse, teamLabel, logs, weather, screenActive);
   if (result.newWeather !== undefined) { weather = result.newWeather; weatherTurnsLeft = 5; }
   if (result.setTailwind) atk = { ...atk, tailwindTurns: 3 };
+  if (result.setLightScreen) atk = { ...atk, lightScreenTurns: 5 };
+  if (result.setReflect) atk = { ...atk, reflectTurns: 5 };
+  if (result.setTrickRoom) trickRoomTurns = trickRoomTurns > 0 ? 0 : 5;
   if (result.futureSight) atk = { ...atk, futureSight: result.futureSight };
 
   const updatedAtkArr = [...atk.pokemon];
@@ -634,7 +659,7 @@ function runOneTurn(
   updatedDefArr[defIdx] = result.def;
   def = { ...def, pokemon: updatedDefArr };
 
-  return { atk, def, weather, weatherTurnsLeft };
+  return { atk, def, weather, weatherTurnsLeft, trickRoomTurns };
 }
 
 function applyEndOfTurnAbilities(team: BattleTeam, weather: WeatherType | null, logs: BattleLogEntry[]): BattleTeam {
@@ -719,13 +744,17 @@ export const useBattleStore = create<BattleStore>()(
         const logs: BattleLogEntry[] = [];
         let currentWeather: WeatherType | null = battle.weather;
         let currentWeatherTurnsLeft = battle.weatherTurnsLeft;
+        let currentTrickRoomTurns = battle.trickRoomTurns;
 
         // Switches happen before moves, in speed order when both teams switch simultaneously.
         const t1Active = t1.pokemon[t1.activeIndex];
         const t2Active = t2.pokemon[t2.activeIndex];
         const t1Speed = getStagedSpeed(t1Active, currentWeather, t1.tailwindTurns > 0);
         const t2Speed = getStagedSpeed(t2Active, currentWeather, t2.tailwindTurns > 0);
-        const t1First = t1Speed > t2Speed || (t1Speed === t2Speed && Math.random() < 0.5);
+        const trickRoomActive = currentTrickRoomTurns > 0;
+        const t1First = trickRoomActive
+          ? (t1Speed < t2Speed || (t1Speed === t2Speed && Math.random() < 0.5))
+          : (t1Speed > t2Speed || (t1Speed === t2Speed && Math.random() < 0.5));
 
         if (t1SwitchIdx !== null && t2SwitchIdx !== null) {
           // Both switching — speed order
@@ -744,14 +773,14 @@ export const useBattleStore = create<BattleStore>()(
           // T1 switches, T2 moves — switch always before opponent's move
           const sw = applyVoluntarySwitch(t1, t2, t1SwitchIdx, currentWeather, currentWeatherTurnsLeft, logs);
           t1 = sw.team; t2 = sw.opponent; currentWeather = sw.weather; currentWeatherTurnsLeft = sw.weatherTurnsLeft;
-          const r = runOneTurn(t2, t1, t2Move, t2.name, logs, currentWeather, currentWeatherTurnsLeft);
-          t2 = r.atk; t1 = r.def; currentWeather = r.weather; currentWeatherTurnsLeft = r.weatherTurnsLeft;
+          const r = runOneTurn(t2, t1, t2Move, t2.name, logs, currentWeather, currentWeatherTurnsLeft, currentTrickRoomTurns);
+          t2 = r.atk; t1 = r.def; currentWeather = r.weather; currentWeatherTurnsLeft = r.weatherTurnsLeft; currentTrickRoomTurns = r.trickRoomTurns;
         } else if (t2SwitchIdx !== null && t1Move !== null) {
           // T2 switches, T1 moves — switch always before opponent's move
           const sw = applyVoluntarySwitch(t2, t1, t2SwitchIdx, currentWeather, currentWeatherTurnsLeft, logs);
           t2 = sw.team; t1 = sw.opponent; currentWeather = sw.weather; currentWeatherTurnsLeft = sw.weatherTurnsLeft;
-          const r = runOneTurn(t1, t2, t1Move, t1.name, logs, currentWeather, currentWeatherTurnsLeft);
-          t1 = r.atk; t2 = r.def; currentWeather = r.weather; currentWeatherTurnsLeft = r.weatherTurnsLeft;
+          const r = runOneTurn(t1, t2, t1Move, t1.name, logs, currentWeather, currentWeatherTurnsLeft, currentTrickRoomTurns);
+          t1 = r.atk; t2 = r.def; currentWeather = r.weather; currentWeatherTurnsLeft = r.weatherTurnsLeft; currentTrickRoomTurns = r.trickRoomTurns;
         } else if (t1Move !== null && t2Move !== null) {
           // Both moving — speed order
           // Helper: check if a pivot switch should interrupt the turn after the first attacker moves
@@ -765,30 +794,30 @@ export const useBattleStore = create<BattleStore>()(
           };
 
           if (t1First) {
-            const r1 = runOneTurn(t1, t2, t1Move, t1.name, logs, currentWeather, currentWeatherTurnsLeft);
-            t1 = r1.atk; t2 = r1.def; currentWeather = r1.weather; currentWeatherTurnsLeft = r1.weatherTurnsLeft;
+            const r1 = runOneTurn(t1, t2, t1Move, t1.name, logs, currentWeather, currentWeatherTurnsLeft, currentTrickRoomTurns);
+            t1 = r1.atk; t2 = r1.def; currentWeather = r1.weather; currentWeatherTurnsLeft = r1.weatherTurnsLeft; currentTrickRoomTurns = r1.trickRoomTurns;
             if (shouldPivot(t1, t2, t1Move)) {
               // Pause: let team1 pick a replacement before team2 attacks
               logs.push(log(`${t1.name} is switching out!`, 'switch'));
-              set({ battle: { ...battle, team1: t1, team2: t2, phase: 'pivot-team1', turn: battle.turn, team1SelectedMove: null, team2SelectedMove: null, team1SelectedSwitch: null, pivotPendingMove: t2Move, pivotPendingTeam: 2, log: [...battle.log, ...logs], weather: currentWeather, weatherTurnsLeft: currentWeatherTurnsLeft } });
+              set({ battle: { ...battle, team1: t1, team2: t2, phase: 'pivot-team1', turn: battle.turn, team1SelectedMove: null, team2SelectedMove: null, team1SelectedSwitch: null, pivotPendingMove: t2Move, pivotPendingTeam: 2, log: [...battle.log, ...logs], weather: currentWeather, weatherTurnsLeft: currentWeatherTurnsLeft, trickRoomTurns: currentTrickRoomTurns } });
               return;
             }
             if (!t1.pokemon[t1.activeIndex].isFainted && !t2.pokemon[t2.activeIndex].isFainted) {
-              const r2 = runOneTurn(t2, t1, t2Move, t2.name, logs, currentWeather, currentWeatherTurnsLeft);
-              t2 = r2.atk; t1 = r2.def; currentWeather = r2.weather; currentWeatherTurnsLeft = r2.weatherTurnsLeft;
+              const r2 = runOneTurn(t2, t1, t2Move, t2.name, logs, currentWeather, currentWeatherTurnsLeft, currentTrickRoomTurns);
+              t2 = r2.atk; t1 = r2.def; currentWeather = r2.weather; currentWeatherTurnsLeft = r2.weatherTurnsLeft; currentTrickRoomTurns = r2.trickRoomTurns;
             }
           } else {
-            const r1 = runOneTurn(t2, t1, t2Move, t2.name, logs, currentWeather, currentWeatherTurnsLeft);
-            t2 = r1.atk; t1 = r1.def; currentWeather = r1.weather; currentWeatherTurnsLeft = r1.weatherTurnsLeft;
+            const r1 = runOneTurn(t2, t1, t2Move, t2.name, logs, currentWeather, currentWeatherTurnsLeft, currentTrickRoomTurns);
+            t2 = r1.atk; t1 = r1.def; currentWeather = r1.weather; currentWeatherTurnsLeft = r1.weatherTurnsLeft; currentTrickRoomTurns = r1.trickRoomTurns;
             if (shouldPivot(t2, t1, t2Move)) {
               // Pause: let team2 pick a replacement before team1 attacks
               logs.push(log(`${t2.name} is switching out!`, 'switch'));
-              set({ battle: { ...battle, team1: t1, team2: t2, phase: 'pivot-team2', turn: battle.turn, team1SelectedMove: null, team2SelectedMove: null, team1SelectedSwitch: null, pivotPendingMove: t1Move, pivotPendingTeam: 1, log: [...battle.log, ...logs], weather: currentWeather, weatherTurnsLeft: currentWeatherTurnsLeft } });
+              set({ battle: { ...battle, team1: t1, team2: t2, phase: 'pivot-team2', turn: battle.turn, team1SelectedMove: null, team2SelectedMove: null, team1SelectedSwitch: null, pivotPendingMove: t1Move, pivotPendingTeam: 1, log: [...battle.log, ...logs], weather: currentWeather, weatherTurnsLeft: currentWeatherTurnsLeft, trickRoomTurns: currentTrickRoomTurns } });
               return;
             }
             if (!t1.pokemon[t1.activeIndex].isFainted && !t2.pokemon[t2.activeIndex].isFainted) {
-              const r2 = runOneTurn(t1, t2, t1Move, t1.name, logs, currentWeather, currentWeatherTurnsLeft);
-              t1 = r2.atk; t2 = r2.def; currentWeather = r2.weather; currentWeatherTurnsLeft = r2.weatherTurnsLeft;
+              const r2 = runOneTurn(t1, t2, t1Move, t1.name, logs, currentWeather, currentWeatherTurnsLeft, currentTrickRoomTurns);
+              t1 = r2.atk; t2 = r2.def; currentWeather = r2.weather; currentWeatherTurnsLeft = r2.weatherTurnsLeft; currentTrickRoomTurns = r2.trickRoomTurns;
             }
           }
         }
@@ -822,6 +851,18 @@ export const useBattleStore = create<BattleStore>()(
           if (t2.tailwindTurns === 0) logs.push(log(`${t2.name}'s Tailwind faded!`, 'status'));
         }
 
+        // Screen countdowns
+        if (t1.lightScreenTurns > 0) { t1 = { ...t1, lightScreenTurns: t1.lightScreenTurns - 1 }; if (t1.lightScreenTurns === 0) logs.push(log(`${t1.name}'s Light Screen faded!`, 'status')); }
+        if (t1.reflectTurns > 0)     { t1 = { ...t1, reflectTurns: t1.reflectTurns - 1 };         if (t1.reflectTurns === 0)     logs.push(log(`${t1.name}'s Reflect faded!`,       'status')); }
+        if (t2.lightScreenTurns > 0) { t2 = { ...t2, lightScreenTurns: t2.lightScreenTurns - 1 }; if (t2.lightScreenTurns === 0) logs.push(log(`${t2.name}'s Light Screen faded!`, 'status')); }
+        if (t2.reflectTurns > 0)     { t2 = { ...t2, reflectTurns: t2.reflectTurns - 1 };         if (t2.reflectTurns === 0)     logs.push(log(`${t2.name}'s Reflect faded!`,       'status')); }
+
+        // Trick Room countdown
+        if (currentTrickRoomTurns > 0) {
+          currentTrickRoomTurns--;
+          if (currentTrickRoomTurns === 0) logs.push(log('Trick Room wore off!', 'status'));
+        }
+
         // Future Sight
         const fs1 = applyFutureSightForTeam(t1, t2, currentWeather, logs);
         t1 = fs1.atk; t2 = fs1.def;
@@ -849,6 +890,7 @@ export const useBattleStore = create<BattleStore>()(
               log: [...battle.log, ...logs],
               winner,
               weather: currentWeather, weatherTurnsLeft: currentWeatherTurnsLeft,
+              trickRoomTurns: currentTrickRoomTurns,
             },
             history: [record, ...s.history].slice(0, 50),
           }));
@@ -873,6 +915,7 @@ export const useBattleStore = create<BattleStore>()(
             team1SelectedMove: null, team2SelectedMove: null, team1SelectedSwitch: null,
             log: [...battle.log, ...logs],
             weather: currentWeather, weatherTurnsLeft: currentWeatherTurnsLeft,
+            trickRoomTurns: currentTrickRoomTurns,
           },
         });
       }
@@ -920,6 +963,7 @@ export const useBattleStore = create<BattleStore>()(
             winner: null,
             weather,
             weatherTurnsLeft,
+            trickRoomTurns: 0,
           },
         });
       },
@@ -970,6 +1014,7 @@ export const useBattleStore = create<BattleStore>()(
 
         // Apply the pivot switch
         let t1 = battle.team1, t2 = battle.team2;
+        let currentTrickRoomTurns = battle.trickRoomTurns;
         if (teamNum === 1) {
           const sw = applyVoluntarySwitch(t1, t2, pokemonIndex, currentWeather, currentWeatherTurnsLeft, logs);
           t1 = sw.team; t2 = sw.opponent; currentWeather = sw.weather; currentWeatherTurnsLeft = sw.weatherTurnsLeft;
@@ -1005,6 +1050,11 @@ export const useBattleStore = create<BattleStore>()(
         t2 = applyEndOfTurnAbilities(t2, currentWeather, logs);
         if (t1.tailwindTurns > 0) { t1 = { ...t1, tailwindTurns: t1.tailwindTurns - 1 }; if (t1.tailwindTurns === 0) logs.push(log(`${t1.name}'s Tailwind faded!`, 'status')); }
         if (t2.tailwindTurns > 0) { t2 = { ...t2, tailwindTurns: t2.tailwindTurns - 1 }; if (t2.tailwindTurns === 0) logs.push(log(`${t2.name}'s Tailwind faded!`, 'status')); }
+        if (t1.lightScreenTurns > 0) { t1 = { ...t1, lightScreenTurns: t1.lightScreenTurns - 1 }; if (t1.lightScreenTurns === 0) logs.push(log(`${t1.name}'s Light Screen faded!`, 'status')); }
+        if (t1.reflectTurns > 0)     { t1 = { ...t1, reflectTurns: t1.reflectTurns - 1 };         if (t1.reflectTurns === 0)     logs.push(log(`${t1.name}'s Reflect faded!`,       'status')); }
+        if (t2.lightScreenTurns > 0) { t2 = { ...t2, lightScreenTurns: t2.lightScreenTurns - 1 }; if (t2.lightScreenTurns === 0) logs.push(log(`${t2.name}'s Light Screen faded!`, 'status')); }
+        if (t2.reflectTurns > 0)     { t2 = { ...t2, reflectTurns: t2.reflectTurns - 1 };         if (t2.reflectTurns === 0)     logs.push(log(`${t2.name}'s Reflect faded!`,       'status')); }
+        if (currentTrickRoomTurns > 0) { currentTrickRoomTurns--; if (currentTrickRoomTurns === 0) logs.push(log('Trick Room wore off!', 'status')); }
         const fs1 = applyFutureSightForTeam(t1, t2, currentWeather, logs); t1 = fs1.atk; t2 = fs1.def;
         const fs2 = applyFutureSightForTeam(t2, t1, currentWeather, logs); t2 = fs2.atk; t1 = fs2.def;
 
@@ -1015,7 +1065,7 @@ export const useBattleStore = create<BattleStore>()(
           const winnerName = winner === 'team1' ? t1.name : t2.name;
           logs.push(log(`${winnerName} wins!`, 'info'));
           const record: BattleRecord = { id: crypto.randomUUID(), date: new Date().toISOString(), team1Name: t1.name, team2Name: t2.name, winner: winnerName, turns: battle.turn };
-          set((s) => ({ battle: { ...battle, team1: t1, team2: t2, phase: 'game-over', turn: battle.turn + 1, team1SelectedMove: null, team2SelectedMove: null, team1SelectedSwitch: null, pivotPendingMove: null, pivotPendingTeam: null, log: [...battle.log, ...logs], winner, weather: currentWeather, weatherTurnsLeft: currentWeatherTurnsLeft }, history: [record, ...s.history].slice(0, 50) }));
+          set((s) => ({ battle: { ...battle, team1: t1, team2: t2, phase: 'game-over', turn: battle.turn + 1, team1SelectedMove: null, team2SelectedMove: null, team1SelectedSwitch: null, pivotPendingMove: null, pivotPendingTeam: null, log: [...battle.log, ...logs], winner, weather: currentWeather, weatherTurnsLeft: currentWeatherTurnsLeft, trickRoomTurns: currentTrickRoomTurns }, history: [record, ...s.history].slice(0, 50) }));
           return;
         }
 
@@ -1023,7 +1073,7 @@ export const useBattleStore = create<BattleStore>()(
         if (t1.pokemon[t1.activeIndex].isFainted) { phase = 'switch-team1'; logs.push(log(`${t1.name} must switch Pokemon!`, 'switch')); }
         else if (t2.pokemon[t2.activeIndex].isFainted) { phase = 'switch-team2'; logs.push(log(`${t2.name} must switch Pokemon!`, 'switch')); }
 
-        set({ battle: { ...battle, team1: t1, team2: t2, phase, turn: battle.turn + 1, team1SelectedMove: null, team2SelectedMove: null, team1SelectedSwitch: null, pivotPendingMove: null, pivotPendingTeam: null, log: [...battle.log, ...logs], weather: currentWeather, weatherTurnsLeft: currentWeatherTurnsLeft } });
+        set({ battle: { ...battle, team1: t1, team2: t2, phase, turn: battle.turn + 1, team1SelectedMove: null, team2SelectedMove: null, team1SelectedSwitch: null, pivotPendingMove: null, pivotPendingTeam: null, log: [...battle.log, ...logs], weather: currentWeather, weatherTurnsLeft: currentWeatherTurnsLeft, trickRoomTurns: currentTrickRoomTurns } });
       },
 
       switchPokemon: (teamNum, pokemonIndex) => {

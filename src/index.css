@@ -58,6 +58,13 @@ img {
 }
 .pokemon-shake { animation: pokemon-shake 0.42s ease-in-out; }
 
+/* Frozen — blue tint + slow pulse on the sprite */
+@keyframes pokemon-frozen {
+  0%, 100% { filter: brightness(0.6) saturate(0) sepia(1) hue-rotate(180deg); opacity: 1; }
+  50%       { filter: brightness(0.6) saturate(0) sepia(1) hue-rotate(180deg); opacity: 0.55; }
+}
+.pokemon-frozen { animation: pokemon-frozen 1.4s ease-in-out infinite; }
+
 /* Faint — defender drops and fades */
 @keyframes pokemon-faint {
   0%   { transform: translateY(0);    opacity: 1; }

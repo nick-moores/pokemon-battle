@@ -65,6 +65,7 @@ function PokemonSide({
   const faintClass = fainting ? 'pokemon-faint' : '';
   const slideClass = slidingIn ? (isTop ? 'pokemon-slide-in-right' : 'pokemon-slide-in-left') : '';
   const wrapperAnim = [lungeClass, shakeClass, faintClass, slideClass].filter(Boolean).join(' ');
+  const frozenClass = !fainting && !shaking && pokemon.status === 'freeze' ? 'pokemon-frozen' : '';
 
   return (
     <div className={`flex ${isTop ? 'flex-row-reverse' : 'flex-row'} items-end gap-3`}>
@@ -72,7 +73,7 @@ function PokemonSide({
         <img
           src={animatedSrc}
           alt={pokemon.displayName}
-          className={`w-28 h-28 object-contain transition-opacity duration-300 ${fainted && !fainting ? 'opacity-20 grayscale' : ''} ${flashing ? 'pokemon-flash' : ''}`}
+          className={`w-28 h-28 object-contain transition-opacity duration-300 ${fainted && !fainting ? 'opacity-20 grayscale' : ''} ${flashing ? 'pokemon-flash' : ''} ${frozenClass}`}
           style={{ imageRendering: 'pixelated' }}
         />
         {pokemon.substituteHp !== null && !fainted && (
@@ -101,6 +102,16 @@ function PokemonSide({
           {(team.tailwindTurns ?? 0) > 0 && (
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-900/70 text-cyan-300 ring-1 ring-cyan-600">
               💨 {team.tailwindTurns}t
+            </span>
+          )}
+          {(team.lightScreenTurns ?? 0) > 0 && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-900/70 text-blue-200 ring-1 ring-blue-600">
+              🔵 {team.lightScreenTurns}t
+            </span>
+          )}
+          {(team.reflectTurns ?? 0) > 0 && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-900/70 text-orange-200 ring-1 ring-orange-600">
+              🔶 {team.reflectTurns}t
             </span>
           )}
         </div>
@@ -500,7 +511,7 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
 
   if (!battle) return null;
 
-  const { team1, team2, phase, turn, log, winner, weather, weatherTurnsLeft } = battle;
+  const { team1, team2, phase, turn, log, winner, weather, weatherTurnsLeft, trickRoomTurns } = battle;
   const t1Active = team1.pokemon[team1.activeIndex];
   const t2Active = team2.pokemon[team2.activeIndex];
 
@@ -590,6 +601,11 @@ export function BattleScreen({ onEnd }: BattleScreenProps) {
               </div>
             );
           })()}
+          {trickRoomTurns > 0 && (
+            <div className="text-xs font-bold px-2 py-0.5 rounded-full ring-1 text-purple-300 bg-purple-900/50 ring-purple-700">
+              🔮 Trick Room {trickRoomTurns}t
+            </div>
+          )}
         </div>
         <span className="font-bold text-blue-300">{team1.name} vs {team2.name}</span>
         <div className="flex items-center gap-2">

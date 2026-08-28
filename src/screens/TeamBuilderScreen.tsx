@@ -52,6 +52,18 @@ function MoveSelector({ pokemon, teamId, onDone }: { pokemon: TeamPokemon; teamI
       }
     }
 
+    // Alternate forms (gmax, totem, etc.) have no moves in PokeAPI — fall back to base form
+    if (names.length === 0) {
+      const baseName = pokemon.name.replace(/-gmax$/, '').replace(/-totem$/, '');
+      if (baseName !== pokemon.name) {
+        const base = await fetchPokemon(baseName);
+        if (base && base.availableMoveNames.length > 0) {
+          names = base.availableMoveNames;
+          setMoveNames(names);
+        }
+      }
+    }
+
     const total = names.length;
     let seen = 0;
     loadMovesInBatches(

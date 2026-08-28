@@ -49,7 +49,7 @@ export function getWeatherMultiplier(weather: WeatherType | null, moveType: stri
   return 1;
 }
 
-export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon, move: Move, weather: WeatherType | null = null): DamageResult {
+export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon, move: Move, weather: WeatherType | null = null, screenActive = false): DamageResult {
   const zero: Omit<DamageResult, 'damage' | 'effectiveness'> = {
     isStab: false, isCrit: false,
     atkStatEffective: 0, defStatEffective: 0, atkStage: 0, defStage: 0,
@@ -118,9 +118,11 @@ export function calculateDamage(attacker: BattlePokemon, defender: BattlePokemon
   abilityMult = flashFireMult;
 
   const randomFactor = (Math.floor(Math.random() * 16) + 85) / 100;
+  // Screens halve damage; crits pierce screens
+  const screenMult = (screenActive && !isCrit) ? 0.5 : 1;
 
   const base = Math.floor((2 * LEVEL / 5 + 2) * move.power * atkStat / defStat);
-  const damage = Math.max(1, Math.floor((Math.floor(base / 50) + 2) * stabMult * effectiveness * critMult * weatherMult * abilityMult * randomFactor));
+  const damage = Math.max(1, Math.floor((Math.floor(base / 50) + 2) * stabMult * effectiveness * critMult * weatherMult * abilityMult * screenMult * randomFactor));
 
   return {
     damage, effectiveness, isStab, isCrit,
