@@ -11,6 +11,7 @@ import { BattleLog, BattleTextBox } from '../components/BattleLog';
 import { getDamageBreakdown, DamageBreakdown, getStagedStat } from '../utils/damage';
 import { TYPE_COLORS } from '../data/typeColors';
 import { formatItemName } from '../data/heldItems';
+import { resolveShinySprite, resolveShinyBackSprite } from '../hooks/usePokeAPI';
 
 function SaveTeamCard({ battleTeam, onSave }: { battleTeam: BattleTeam; onSave: () => void }) {
   const [saved, setSaved] = useState(false);
@@ -59,8 +60,8 @@ function PokemonSide({
 
   const animatedSrc = pokemon.isShiny
     ? (showBack
-        ? (pokemon.shinyAnimatedBackSprite || pokemon.shinyBackSprite || pokemon.animatedBackSprite || pokemon.backSprite || pokemon.sprite)
-        : (pokemon.shinyAnimatedSprite || pokemon.shinySprite || pokemon.animatedSprite || pokemon.sprite))
+        ? (pokemon.shinyAnimatedBackSprite || resolveShinyBackSprite(pokemon.id, pokemon.shinyBackSprite ?? '') || pokemon.animatedBackSprite || pokemon.backSprite || pokemon.sprite)
+        : (pokemon.shinyAnimatedSprite || resolveShinySprite(pokemon.id, pokemon.shinySprite ?? '') || pokemon.animatedSprite || pokemon.sprite))
     : (showBack
         ? (pokemon.animatedBackSprite || pokemon.backSprite || pokemon.sprite)
         : (pokemon.animatedSprite || pokemon.sprite));
@@ -78,6 +79,7 @@ function PokemonSide({
       <div className={`relative ${wrapperAnim}`}>
         <img
           src={animatedSrc}
+          onError={(e) => { if (pokemon.isShiny) e.currentTarget.src = showBack ? (pokemon.backSprite || pokemon.sprite) : (pokemon.animatedSprite || pokemon.sprite); }}
           alt={pokemon.displayName}
           className={`w-28 h-28 object-contain transition-opacity duration-300 ${fainted && !fainting ? 'opacity-20 grayscale' : ''} ${flashing ? 'pokemon-flash' : ''} ${frozenClass}`}
           style={{ imageRendering: 'pixelated' }}
@@ -236,7 +238,7 @@ function SwitchPanel({
                 : 'border-gray-600 hover:border-green-400 bg-gray-800 hover:bg-gray-700 cursor-pointer hover:scale-105'
               }`}
           >
-            <img src={(p.isShiny && p.shinySprite) ? p.shinySprite : p.sprite} alt={p.displayName} className="w-12 h-12 object-contain" />
+            <img src={p.isShiny ? resolveShinySprite(p.id, p.shinySprite ?? '') : p.sprite} onError={(e) => { if (p.isShiny) e.currentTarget.src = p.sprite; }} alt={p.displayName} className="w-12 h-12 object-contain" />
             <span className="text-xs text-white font-medium text-center mt-1 leading-tight">{p.displayName}{p.isShiny ? ' ✨' : ''}</span>
             <div className="text-xs text-gray-400">{p.currentHp}/{p.stats.hp}</div>
           </button>

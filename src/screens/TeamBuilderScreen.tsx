@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTeamStore } from '../store/teamStore';
 import { Team, TeamPokemon, Move, BasePokemon } from '../types';
-import { fetchPokemon, fetchMove, usePokemonSearch, formatName } from '../hooks/usePokeAPI';
+import { fetchPokemon, fetchMove, usePokemonSearch, formatName, resolveShinySprite } from '../hooks/usePokeAPI';
 import { TypeBadge } from '../components/TypeBadge';
 import { HELD_ITEMS, formatItemName } from '../data/heldItems';
 
@@ -444,7 +444,8 @@ function EditTeam({ team, onBack }: { team: Team; onBack: () => void }) {
               </div>
               <span className="text-gray-600 font-bold w-4 text-center text-sm">{i + 1}</span>
               <img
-                src={(p.isShiny && p.shinySprite) ? p.shinySprite : p.sprite}
+                src={p.isShiny ? resolveShinySprite(p.id, p.shinySprite ?? '') : p.sprite}
+                onError={(e) => { if (p.isShiny) e.currentTarget.src = p.sprite; }}
                 alt={p.displayName}
                 className="w-12 h-12 object-contain"
               />

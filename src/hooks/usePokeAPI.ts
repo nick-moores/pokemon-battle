@@ -2,7 +2,17 @@ import { useState, useCallback, useEffect } from 'react';
 import { BasePokemon, Move } from '../types';
 
 const BASE_URL = 'https://pokeapi.co/api/v2';
+const SPRITE_CDN = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon';
 const pokemonCache = new Map<string, BasePokemon>();
+
+// Returns the best shiny front sprite for a pokemon, constructing a CDN URL from id as fallback
+// for cases where the stored shinySprite field is empty (e.g. pokemon added before shiny support).
+export function resolveShinySprite(id: number, stored: string): string {
+  return stored || `${SPRITE_CDN}/other/official-artwork/shiny/${id}.png`;
+}
+export function resolveShinyBackSprite(id: number, stored: string): string {
+  return stored || `${SPRITE_CDN}/back/shiny/${id}.png`;
+}
 const moveCache = new Map<string, Move>();
 
 const REGION_ADJECTIVES: Record<string, string> = {
