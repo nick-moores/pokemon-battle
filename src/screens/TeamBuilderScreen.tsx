@@ -66,14 +66,16 @@ function HeldItemSelector({ pokemon, teamId, onDone }: { pokemon: TeamPokemon; t
           </button>
           {filtered.map(item => {
             const active = pokemon.heldItem === item.slug;
+            const spriteUrl = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/${item.slug}.png`;
             return (
               <button
                 key={item.slug}
                 onClick={() => pick(item.slug)}
-                className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between gap-3 transition-all
+                className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-3 transition-all
                   ${active ? 'bg-purple-700 border-2 border-purple-400' : 'bg-gray-800 border-2 border-transparent hover:border-gray-600'}`}
               >
-                <span className="font-medium text-white text-sm">{item.label}</span>
+                <img src={spriteUrl} alt={item.label} className="w-6 h-6 object-contain shrink-0" style={{ imageRendering: 'pixelated' }} />
+                <span className="font-medium text-white text-sm flex-1">{item.label}</span>
                 <span className="text-xs text-gray-400 shrink-0 text-right max-w-[55%]">{item.desc}</span>
               </button>
             );
@@ -467,7 +469,14 @@ function EditTeam({ team, onBack }: { team: Team; onBack: () => void }) {
                   </div>
                 )}
                 <div className="flex items-center gap-1 mt-0.5">
-                  <span className="text-[9px] text-gray-500">Item:</span>
+                  {(p.heldItem ?? '') && (
+                    <img
+                      src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/${p.heldItem}.png`}
+                      alt={formatItemName(p.heldItem ?? '')}
+                      className="w-4 h-4 object-contain"
+                      style={{ imageRendering: 'pixelated' }}
+                    />
+                  )}
                   <span className="text-[9px] text-purple-300">{formatItemName(p.heldItem ?? '')}</span>
                 </div>
                 <div className="text-xs text-gray-500 mt-0.5 truncate">

@@ -100,8 +100,14 @@ function PokemonSide({
           )}
           {(pokemon.heldItem ?? '') !== '' && (
             pokemon.heldItemConsumed
-              ? <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800/60 text-gray-500 line-through">{formatItemName(pokemon.heldItem ?? '')}</span>
-              : <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-900/60 text-purple-200 ring-1 ring-purple-700">{formatItemName(pokemon.heldItem ?? '')}</span>
+              ? <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-gray-800/60 text-gray-500 line-through">
+                  <img src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/${pokemon.heldItem}.png`} alt="" className="w-4 h-4 object-contain opacity-40" style={{ imageRendering: 'pixelated' }} />
+                  {formatItemName(pokemon.heldItem ?? '')}
+                </span>
+              : <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-purple-900/60 text-purple-200 ring-1 ring-purple-700">
+                  <img src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/${pokemon.heldItem}.png`} alt="" className="w-4 h-4 object-contain" style={{ imageRendering: 'pixelated' }} />
+                  {formatItemName(pokemon.heldItem ?? '')}
+                </span>
           )}
         </div>
         <div className={`flex gap-1 mb-1 ${isTop ? 'justify-end' : 'justify-start'}`}>
