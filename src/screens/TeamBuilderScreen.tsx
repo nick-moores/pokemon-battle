@@ -180,15 +180,35 @@ function MoveSelector({ pokemon, teamId, onDone }: { pokemon: TeamPokemon; teamI
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-900 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
-        <div className="p-4 border-b border-gray-700 flex items-center gap-3">
-          <img src={pokemon.sprite} alt={pokemon.displayName} className="w-12 h-12 object-contain" />
-          <div>
-            <h3 className="font-bold text-white text-lg">{pokemon.displayName}</h3>
-            <div className="flex gap-1">
-              {pokemon.types.map(t => <TypeBadge key={t} type={t} small />)}
+        <div className="p-4 border-b border-gray-700">
+          <div className="flex items-center gap-3 mb-3">
+            <img src={pokemon.sprite} alt={pokemon.displayName} className="w-12 h-12 object-contain" />
+            <div>
+              <h3 className="font-bold text-white text-lg">{pokemon.displayName}</h3>
+              <div className="flex gap-1">
+                {pokemon.types.map(t => <TypeBadge key={t} type={t} small />)}
+              </div>
             </div>
+            <div className="ml-auto text-sm text-gray-400">{selected.length}/4 moves</div>
           </div>
-          <div className="ml-auto text-sm text-gray-400">{selected.length}/4 moves</div>
+          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+            {([
+              ['HP',  pokemon.stats.hp,           'bg-green-500'],
+              ['Atk', pokemon.stats.attack,        'bg-red-500'],
+              ['Def', pokemon.stats.defense,       'bg-yellow-500'],
+              ['SpA', pokemon.stats.specialAttack, 'bg-blue-500'],
+              ['SpD', pokemon.stats.specialDefense,'bg-teal-500'],
+              ['Spe', pokemon.stats.speed,         'bg-purple-500'],
+            ] as [string, number, string][]).map(([label, val, color]) => (
+              <div key={label} className="flex items-center gap-1.5">
+                <span className="text-[10px] text-gray-500 w-7 shrink-0">{label}</span>
+                <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(100, (val / 255) * 100)}%` }} />
+                </div>
+                <span className="text-[10px] text-gray-400 w-6 text-right shrink-0">{val}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
         {!loaded && !loading && (
