@@ -326,8 +326,15 @@ function TeamCard({ team, onEdit }: { team: Team; onEdit: () => void }) {
       <div className="flex gap-2 flex-wrap">
         {team.pokemon.map(p => (
           <div key={p.id} className="flex flex-col items-center">
-            <img src={p.sprite} alt={p.displayName} className="w-12 h-12 object-contain" />
-            <span className="text-xs text-gray-400 text-center leading-tight mt-0.5">{p.displayName}</span>
+            <img
+              src={p.isShiny ? resolveShinySprite(p.id, p.shinySprite ?? '') : p.sprite}
+              onError={(e) => { if (p.isShiny) e.currentTarget.src = p.sprite; }}
+              alt={p.displayName}
+              className="w-12 h-12 object-contain"
+            />
+            <span className="text-xs text-gray-400 text-center leading-tight mt-0.5">
+              {p.displayName}{p.isShiny ? ' ✨' : ''}
+            </span>
             <span className="text-[9px] text-gray-600">{p.selectedMoves.length} moves</span>
           </div>
         ))}
