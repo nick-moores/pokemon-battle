@@ -27,7 +27,7 @@ function CalcBreakdown({ c }: { c: DamageCalcRecord }) {
 
   const mults: { label: string; value: string; highlight?: boolean }[] = [];
   if (c.stabMult !== 1) mults.push({ label: 'STAB', value: `×${c.stabMult.toFixed(1)}`, highlight: true });
-  if (c.effectiveness !== 1) {
+  if (c.effectiveness !== 1 && c.finalDamage > 0 && c.category !== 'status') {
     const label = c.effectiveness >= 4 ? '×4 super effective' : c.effectiveness >= 2 ? '×2 super effective' : c.effectiveness === 0.5 ? '×0.5 not very effective' : '×0.25 not very effective';
     mults.push({ label: 'Type', value: label, highlight: c.effectiveness >= 2 });
   }
