@@ -16,6 +16,14 @@ const WEATHER_MOVES: Record<string, WeatherType> = {
   'snow': 'hail',
 };
 
+// Moves that target the user or the whole field — they bypass invulnerability because
+// they don't require hitting the opponent (weather, screens, tailwind, trick-room, self-buffs).
+const BYPASSES_INVULNERABILITY = new Set([
+  'sunny-day', 'rain-dance', 'sandstorm', 'hail', 'snow',
+  'tailwind', 'light-screen', 'reflect', 'trick-room',
+  'substitute',
+]);
+
 const WEATHER_START: Record<WeatherType, string> = {
   sunny: 'The sunlight turned harsh!',
   rain: 'It started to rain!',
@@ -709,7 +717,7 @@ function runOneTurn(
     return { atk: { ...atk, pokemon: arr }, def, weather, weatherTurnsLeft, trickRoomTurns };
   }
 
-  if (defPokemon.isInvulnerable) {
+  if (defPokemon.isInvulnerable && !BYPASSES_INVULNERABILITY.has(moveToUse.name) && moveToUse.category !== 'heal') {
     const chargeName = defPokemon.chargingMove?.name ?? '';
     const loc = (chargeName === 'dig' || chargeName === 'dive') ? 'underground' : 'in the air';
     logs.push(log(`The attack missed! ${defPokemon.displayName} is ${loc}!`, 'info'));
