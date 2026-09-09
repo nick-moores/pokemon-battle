@@ -6,9 +6,10 @@ export interface MusicTrack {
 
 export const TRACKS: MusicTrack[] = [
   { id: 'battle1', label: 'Red & Blue Battle Theme', file: '/pokemon-red-battle-music.mp3' },
-  { id: 'battle2', label: 'Sword & Shield Gym Leader Battle', file: '/sword-shield-gym-leader.mp3' }
+  { id: 'battle2', label: 'Sword & Shield Gym Leader Battle', file: '/sword-shield-gym-leader.mp3' },
+  { id: 'battle3', label: 'VS Trainer Battle', file: '/vs-trainer-battle.mp3' },
   // Add more tracks here — drop MP3s into /public/ and add an entry:
-  // { id: 'battle2', label: 'Battle Theme 2', file: '/battle-music-2.mp3' },
+  // { id: 'battle4', label: 'Battle Theme 4', file: '/battle-music-4.mp3' },
 ];
 
 const STORAGE_KEY = 'pokemon-battle-music-track';
