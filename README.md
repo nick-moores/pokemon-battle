@@ -2,7 +2,7 @@
 
 A pass-and-play Pokemon battle simulator built for the Moores family. Build teams, settle grudges, and find out who the real Pokemon master is.
 
-**[▶ Play it live](https://pokemon-battle-phi.vercel.app)**
+**[▶ Play it live](https://pokemon-battle-ashy.vercel.app)**
 
 ---
 
@@ -20,7 +20,6 @@ A pass-and-play Pokemon battle simulator built for the Moores family. Build team
 ### Game Over
 ![Game Over](screenshots/game-over.png)
 
-> **To add screenshots:** drop `home.png`, `team-builder.png`, `battle.png`, and `game-over.png` into a `screenshots/` folder at the root of the repo.
 
 ---
 
